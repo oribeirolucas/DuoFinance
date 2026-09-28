@@ -1,0 +1,6 @@
+{
+  "name": "Duo Finance",
+  "description": "Gestão financeira para casais - Dois sonhos. Um só planejamento.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
