@@ -54,11 +54,8 @@ Não concluir com gate aplicável falhando. Falha preexistente deve ser reproduz
 
 ## Segurança
 
-- Nenhum segredo/token no código do cliente ou no diff.
-- `VITE_*` pode carregar apenas identificadores **públicos** — hoje `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY`. A chave publicável identifica o projeto e não autoriza nada por si só: quem autoriza é o JWT do usuário, e o alcance dele é decidido pelas policies de RLS. Cada nova variável `VITE_*` precisa ser justificada no PR.
-- Qualquer valor que conceda autoridade sozinho — `service_role`, chaves de API, segredos de webhook, credenciais SMTP — nunca entra no repositório, em `.env*` versionado, em `VITE_*`, nem em arquivo que o Vite empacote. Vive só no dashboard do Supabase ou em secrets de Edge Function.
-- Autorização mora em RLS e em funções `SECURITY DEFINER`, não no cliente. Filtro no front é conveniência de UI, nunca fronteira de segurança.
-- Validar entrada externa antes do uso. A validação que protege precisa existir também no servidor: `NOT NULL`, `CHECK` e tipos reais no banco, não só no formulário.
+- Nenhum segredo/token no código do cliente ou no diff. Segredos ficam em variáveis de ambiente no lado servidor (`express`/`tsx`), nunca embutidos no frontend nem expostos via `VITE_*`.
+- Validar entrada externa e respostas de API (ex.: `@google/genai`) antes do uso.
 
 ## Skills do projeto
 
