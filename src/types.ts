@@ -124,6 +124,7 @@ export type NavigationTab =
   | 'metas'
   | 'metas-financeiras'
   | 'planilha'
-  | 'parceiro';
+  | 'parceiro'
+  | 'configuracoes';
 
 export type AuthScreen = 'login' | 'cadastro' | 'esqueci-senha';
