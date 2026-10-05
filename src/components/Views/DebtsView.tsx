@@ -20,6 +20,29 @@ interface DebtsViewProps {
   onOpenDebtModal: (debtToEdit?: Debt) => void;
 }
 
+/**
+ * O tipo Debt guarda apenas valorTotal, valorPago e parcelas ("12/24").
+ * Tudo o que a tela exibe sai daqui — nenhum campo redundante no estado,
+ * que sairia de sincronia assim que valorPago mudasse.
+ */
+const CENTAVO = 0.005; // tolerância de arredondamento: saldos são moeda, não float exato
+
+const deriveDebt = (debt: Debt) => {
+  // De "12/24" só o denominador é confiável: o numerador não é atualizado por
+  // payDebtInstallment, que mexe apenas em valorPago. Quantas parcelas já foram
+  // pagas, portanto, se calcula a partir do dinheiro — a única fonte que avança.
+  const totalRaw = (debt.parcelas || '').split('/')[1];
+  const totalParcelas = Math.max(1, Number.parseInt(totalRaw, 10) || 1);
+  const valorParcela = debt.valorTotal / totalParcelas;
+  const valorRestante = Math.max(0, debt.valorTotal - debt.valorPago);
+  const parcelasPagas = valorParcela > 0
+    ? Math.min(totalParcelas, Math.round(debt.valorPago / valorParcela))
+    : totalParcelas;
+  const progresso = debt.valorTotal > 0 ? (debt.valorPago / debt.valorTotal) * 100 : 100;
+
+  return { totalParcelas, parcelasPagas, valorRestante, valorParcela, progresso };
+};
+
 export const DebtsView: React.FC<DebtsViewProps> = ({ onOpenDebtModal }) => {
   const { debts: rawDebts, users, payDebtInstallment, deleteDebt, getHouseholdUserIds } = useApp();
 
@@ -27,7 +50,7 @@ export const DebtsView: React.FC<DebtsViewProps> = ({ onOpenDebtModal }) => {
   const debts = rawDebts.filter(d => householdIds.includes(d.registradoPor));
 
   const totalOriginalDebt = debts.reduce((acc, curr) => acc + curr.valorTotal, 0);
-  const totalRemainingDebt = debts.reduce((acc, curr) => acc + curr.valorRestante, 0);
+  const totalRemainingDebt = debts.reduce((acc, curr) => acc + deriveDebt(curr).valorRestante, 0);
   const totalPaidDebt = totalOriginalDebt - totalRemainingDebt;
 
   return (
@@ -61,9 +84,11 @@ export const DebtsView: React.FC<DebtsViewProps> = ({ onOpenDebtModal }) => {
         <div className="bento-card p-5 flex items-center justify-between">
           <div>
             <p className="text-xs font-semibold uppercase text-slate-500">Compromissos Ativos</p>
-            <h3 className="text-2xl font-extrabold text-purple-900">{debts.filter(d => d.valorRestante > 0).length}</h3>
+            <h3 className="text-2xl font-extrabold text-purple-900">
+              {debts.filter(d => deriveDebt(d).valorRestante >= CENTAVO).length}
+            </h3>
             <p className="text-[11px] text-slate-400 mt-1">
-              {debts.filter(d => d.valorRestante <= 0).length} financiamentos liquidados
+              {debts.filter(d => deriveDebt(d).valorRestante < CENTAVO).length} financiamentos liquidados
             </p>
           </div>
           <div className="w-11 h-11 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center">
@@ -100,9 +125,9 @@ export const DebtsView: React.FC<DebtsViewProps> = ({ onOpenDebtModal }) => {
           </div>
         ) : (
           debts.map(debt => {
-            const isPaidOff = debt.valorRestante <= 0;
-            const progress = debt.valorTotal > 0 ? ((debt.valorTotal - debt.valorRestante) / debt.valorTotal) * 100 : 100;
-            const responsavelUser = users.find(u => u.id === debt.responsavel);
+            const { valorRestante, valorParcela, parcelasPagas, totalParcelas, progresso } = deriveDebt(debt);
+            const isPaidOff = valorRestante < CENTAVO;
+            const responsavelUser = users.find(u => u.id === debt.registradoPor);
 
             return (
               <div
@@ -118,9 +143,9 @@ export const DebtsView: React.FC<DebtsViewProps> = ({ onOpenDebtModal }) => {
                   <div className="flex items-start justify-between gap-2 mb-3">
                     <div>
                       <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-full border border-purple-200">
-                        {debt.credor}
+                        {debt.dono === 'casal' ? 'Conjunta' : 'Individual'}
                       </span>
-                      <h3 className="text-lg font-bold text-slate-900 mt-1">{debt.titulo}</h3>
+                      <h3 className="text-lg font-bold text-slate-900 mt-1">{debt.nome}</h3>
                     </div>
 
                     <div className="flex items-center gap-1">
@@ -146,7 +171,7 @@ export const DebtsView: React.FC<DebtsViewProps> = ({ onOpenDebtModal }) => {
                     <div className="flex justify-between items-center text-xs font-bold mb-1.5">
                       <span className="text-slate-600">Amortização</span>
                       <span className={isPaidOff ? 'text-emerald-600' : 'text-purple-700'}>
-                        {progress.toFixed(0)}% quitado
+                        {progresso.toFixed(0)}% quitado
                       </span>
                     </div>
 
@@ -155,7 +180,7 @@ export const DebtsView: React.FC<DebtsViewProps> = ({ onOpenDebtModal }) => {
                         className={`h-full rounded-full transition-all duration-500 ${
                           isPaidOff ? 'bg-emerald-500' : 'bg-gradient-duo'
                         }`}
-                        style={{ width: `${Math.min(progress, 100)}%` }}
+                        style={{ width: `${Math.min(progresso, 100)}%` }}
                       />
                     </div>
                   </div>
@@ -165,16 +190,16 @@ export const DebtsView: React.FC<DebtsViewProps> = ({ onOpenDebtModal }) => {
                     <div>
                       <p className="text-[10px] font-semibold text-slate-400 uppercase">Restante a Pagar</p>
                       <p className={`text-base font-extrabold ${isPaidOff ? 'text-emerald-600' : 'text-rose-600'}`}>
-                        {formatCurrency(debt.valorRestante)}
+                        {formatCurrency(valorRestante)}
                       </p>
                     </div>
 
                     <div>
                       <p className="text-[10px] font-semibold text-slate-400 uppercase">Valor da Parcela</p>
                       <p className="text-base font-extrabold text-slate-800">
-                        {formatCurrency(debt.valorParcela)}
+                        {formatCurrency(valorParcela)}
                         <span className="text-[10px] font-normal text-slate-500 ml-1">
-                          ({debt.parcelasPagas}/{debt.totalParcelas})
+                          ({parcelasPagas}/{totalParcelas})
                         </span>
                       </p>
                     </div>
@@ -186,14 +211,14 @@ export const DebtsView: React.FC<DebtsViewProps> = ({ onOpenDebtModal }) => {
                       <span className="flex items-center gap-1.5 text-slate-500">
                         <Percent className="w-3.5 h-3.5 text-purple-600" /> Taxa de Juros:
                       </span>
-                      <span className="font-semibold text-slate-800">{debt.taxaJuros}% a.m.</span>
+                      <span className="font-semibold text-slate-800">{debt.juros}% a.a.</span>
                     </div>
 
                     <div className="flex items-center justify-between">
                       <span className="flex items-center gap-1.5 text-slate-500">
-                        <Calendar className="w-3.5 h-3.5 text-purple-600" /> Vencimento Mensal:
+                        <Calendar className="w-3.5 h-3.5 text-purple-600" /> Próx. Vencimento:
                       </span>
-                      <span className="font-semibold text-slate-800">Dia {debt.vencimentoDia}</span>
+                      <span className="font-semibold text-slate-800">{formatDateBR(debt.vencimento)}</span>
                     </div>
 
                     <div className="flex items-center justify-between">
@@ -201,7 +226,7 @@ export const DebtsView: React.FC<DebtsViewProps> = ({ onOpenDebtModal }) => {
                         <UserCheck className="w-3.5 h-3.5 text-purple-600" /> Responsável:
                       </span>
                       <span className="font-bold text-purple-900">
-                        {debt.responsavel === 'casal'
+                        {debt.dono === 'casal'
                           ? 'Compartilhado (Casal)'
                           : responsavelUser
                           ? responsavelUser.nome
@@ -220,11 +245,11 @@ export const DebtsView: React.FC<DebtsViewProps> = ({ onOpenDebtModal }) => {
                     </div>
                   ) : (
                     <button
-                      onClick={() => payDebtInstallment(debt.id)}
+                      onClick={() => payDebtInstallment(debt.id, valorParcela)}
                       className="w-full py-2.5 bg-purple-50 hover:bg-purple-100 text-purple-800 font-bold text-xs rounded-xl transition-colors border border-purple-200 flex items-center justify-center gap-2"
                     >
                       <CreditCard className="w-4 h-4 text-purple-600" />
-                      <span>Registrar Pagamento de Parcela ({formatCurrency(debt.valorParcela)})</span>
+                      <span>Registrar Pagamento de Parcela ({formatCurrency(valorParcela)})</span>
                     </button>
                   )}
                 </div>
