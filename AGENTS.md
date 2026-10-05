@@ -29,7 +29,7 @@ pedido de tarefa → branch (de develop) → implementação → (code review op
 - **Branches de trabalho:** `feat/<slug-curto>` ou `fix/<slug-curto>`, em minúsculas com hífens, sempre a partir de `develop`.
 - **Merge:** `git merge --no-ff <branch>` por padrão, para preservar o ponto de integração de cada tarefa. (Trocar para fast-forward se preferir histórico linear — registrar a preferência aqui.)
 - **Publicação:** `develop → main` apenas sob pedido explícito, após `npm run lint` + `npm run build` verdes e confirmação do diff `main..develop`.
-- **Push:** `develop` é enviada automaticamente após cada merge com gates verdes, sem perguntar. `main` nunca: o push dela só acontece dentro de uma publicação explícita, com confirmação.
+- **Push:** nunca automático. O agente pergunta antes de `git push origin develop` e de `git push origin main`.
 - **Limpeza:** após merge, o agente pergunta se deve apagar a branch (`git branch -d`).
 
 ## Mensagens de commit
