@@ -15,15 +15,6 @@ import {
   ExpenseCategory,
   IncomeRecurrenceConfig
 } from '../types';
-import {
-  mockExpenses,
-  mockIncomes,
-  mockMonthlyGoals,
-  mockFinancialGoals,
-  mockDebts,
-  mockBudgets,
-  mockIncomeRecurrenceConfigs
-} from '../data/initialData';
 import { avatarDeIniciais } from '../utils/avatar';
 import {
   paraExpense, deExpense, paraIncome, deIncome,
@@ -108,7 +99,10 @@ interface AppContextType {
   deleteMonthlyGoal: (id: string) => void;
   addGoalContribution: (goalId: string, amount: number) => void;
 
-  addFinancialGoal: (goal: Omit<FinancialGoal, 'id' | 'valorAtual' | 'status'>) => void;
+  addFinancialGoal: (
+    goal: Omit<FinancialGoal, 'id' | 'valorAtual' | 'status'>
+      & { valorAtual?: number; status?: FinancialGoal['status'] }
+  ) => void;
   updateFinancialGoal: (id: string, goal: Partial<FinancialGoal>) => void;
   deleteFinancialGoal: (id: string) => void;
   addFinancialGoalContribution: (goalId: string, amount: number) => void;
@@ -130,7 +124,6 @@ interface AppContextType {
   // Helpers & Toast
   toasts: ToastState[];
   showToast: (message: string, type?: 'success' | 'info' | 'error') => void;
-  resetToDefaultData: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -215,7 +208,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     userId: '', plano: 'free', status: 'active'
   });
   const [householdId, setHouseholdId] = useState<string>('');
-  const [carregandoDados, setCarregandoDados] = useState(false);
+  const [carregandoDados, setCarregandoDados] = useState(true);
 
   const [divisionRule, setDivisionRuleEstado] = useState<DivisionRule>('proportional');
 
@@ -291,6 +284,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (cancelado) return;
         if (error || !data) {
           showToast('Não foi possível carregar o perfil.', 'error');
+          setCarregandoDados(false);
           return;
         }
         setHouseholdId(data.find(l => l.id === session.user.id)?.household_id ?? '');
@@ -311,7 +305,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // há filtro por usuário na consulta: pedir "todas as despesas" devolve
   // exatamente as do casal de quem está logado.
   useEffect(() => {
-    if (!session || !householdId) return;
+    if (!session) { setCarregandoDados(false); return; }
+    if (!householdId) return;
 
     let cancelado = false;
     setCarregandoDados(true);
@@ -326,10 +321,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       supabase.from('category_budgets').select('*'),
       supabase.from('subscriptions').select('*').eq('user_id', session.user.id).maybeSingle(),
       supabase.from('households').select('divisao_regra').eq('id', householdId).maybeSingle(),
-    ]).then(([ex, inc, rec, mg, fg, dv, orc, assin, casa]) => {
+      supabase.from('household_members').select('user_id, papel'),
+    ]).then(([ex, inc, rec, mg, fg, dv, orc, assin, casa, membros]) => {
       if (cancelado) return;
 
-      const falhou = [ex, inc, rec, mg, fg, dv, orc].find(r => r.error);
+      const falhou = [ex, inc, rec, mg, fg, dv, orc, assin, casa, membros].find(r => r.error);
       if (falhou) {
         showToast('Não foi possível carregar seus dados.', 'error');
         setCarregandoDados(false);
@@ -345,6 +341,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setBudgets((orc.data ?? []).map(paraBudget));
       if (assin.data) setSubscription(paraSubscription(assin.data));
       if (casa.data?.divisao_regra) setDivisionRuleEstado(casa.data.divisao_regra as DivisionRule);
+
+      // A parceria deixa de ser um objeto guardado e passa a ser derivada de
+      // quem está no household. Antes ela vinha do localStorage, onde podia
+      // dizer qualquer coisa; agora reflete a associação real no banco, que é
+      // a mesma que o RLS consulta para decidir o que cada um enxerga.
+      const linhasMembros = membros.data ?? [];
+      const dono = linhasMembros.find(m => m.papel === 'owner')?.user_id ?? session.user.id;
+      const outro = linhasMembros.find(m => m.user_id !== dono)?.user_id;
+      setPartnership({
+        id: householdId,
+        user1Id: dono,
+        user2Id: outro,
+        status: linhasMembros.length >= 2 ? 'active' : 'none',
+        inviteToken: ''
+      });
+      setCarregandoDados(false);
+    }).catch(() => {
+      // Sem isto, uma consulta rejeitada deixaria a tela de carregamento presa
+      // para sempre, sem erro e sem app.
+      if (cancelado) return;
+      showToast('Não foi possível carregar seus dados.', 'error');
       setCarregandoDados(false);
     });
 
@@ -635,6 +652,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const logout = async () => {
     await supabase.auth.signOut();
+    // Sem limpar, um segundo login na mesma aba renderiza os dados da conta
+    // anterior até a nova carga chegar.
+    setExpenses([]); setIncomes([]); setMonthlyGoals([]); setFinancialGoals([]);
+    setDebts([]); setBudgets([]); setIncomeRecurrenceConfigs([]); setPerfis([]);
+    setHouseholdId('');
     setAuthScreen('login');
     showToast('Sessão encerrada com sucesso.', 'info');
   };
@@ -681,9 +703,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const deleteExpense = (id: string) => {
-    const anterior = expenses;
+    const indice = expenses.findIndex(e => e.id === id);
+    const removida = expenses[indice];
     gravar(
-      () => { setExpenses(prev => prev.filter(e => e.id !== id)); return () => setExpenses(anterior); },
+      () => { setExpenses(prev => prev.filter(e => e.id !== id));
+              return () => setExpenses(prev => { if (!removida) return prev;
+                const prox = [...prev]; prox.splice(Math.max(0, indice), 0, removida); return prox; }); },
       () => supabase.from('expenses').delete().eq('id', id)
     );
   };
@@ -721,9 +746,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const deleteIncome = (id: string) => {
-    const anterior = incomes;
+    const indice = incomes.findIndex(i => i.id === id);
+    const removida = incomes[indice];
     gravar(
-      () => { setIncomes(prev => prev.filter(i => i.id !== id)); return () => setIncomes(anterior); },
+      () => { setIncomes(prev => prev.filter(i => i.id !== id));
+              return () => setIncomes(prev => { if (!removida) return prev;
+                const prox = [...prev]; prox.splice(Math.max(0, indice), 0, removida); return prox; }); },
       () => supabase.from('incomes').delete().eq('id', id)
     );
   };
@@ -738,7 +766,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const anterior = incomeRecurrenceConfigs;
     // A tabela tem unique (dono_id, tipo): upsert por essa chave evita criar
     // uma segunda configuração do mesmo tipo para a mesma pessoa.
-    const comId = { ...config, id: config.id || crypto.randomUUID() };
+    // A tela monta ids legíveis como "irc-<usuario>-salario", que não cabem
+    // numa coluna uuid. O id real vem da linha já gravada, ou é novo.
+    const existente = incomeRecurrenceConfigs.find(c => c.donoId === config.donoId && c.tipo === config.tipo);
+    const comId = { ...config, id: existente?.id ?? crypto.randomUUID() };
     gravar(
       () => {
         setIncomeRecurrenceConfigs(prev => {
@@ -862,8 +893,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           .insert(novasReceitas.map(i => deIncome(i, householdId)))
           .then(({ error: erroInsert }) => {
             if (erroInsert) {
-              setIncomes(anterior);
-              showToast('Não foi possível sincronizar as receitas.', 'error');
+              // A exclusão já foi confirmada pelo banco. Voltar ao estado
+              // anterior exibiria um ano de receitas que não existem mais —
+              // pior que mostrar o vazio real. A tela passa a refletir o que
+              // de fato está gravado, e a mensagem pede a repetição, que é
+              // segura: a operação converge para o mesmo resultado.
+              setIncomes(mantidas);
+              showToast('As receitas foram limpas, mas não recriadas. Sincronize novamente.', 'error');
               return;
             }
             showToast(`Receitas recorrentes sincronizadas para ${userToSync.nome}! 💰`, 'success');
@@ -886,19 +922,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const updateMonthlyGoal = (id: string, data: Partial<MonthlyGoal>) => {
-    const anterior = monthlyGoals;
+    const anterior = monthlyGoals.find(g => g.id === id);
     gravar(
       () => { setMonthlyGoals(prev => prev.map(g => g.id === id ? { ...g, ...data } : g));
-              return () => setMonthlyGoals(anterior); },
+              return () => setMonthlyGoals(prev => prev.map(g => g.id === id && anterior ? anterior : g)); },
       () => supabase.from('monthly_goals').update(deMonthlyGoal(data)).eq('id', id),
       'Meta atualizada!'
     );
   };
 
   const deleteMonthlyGoal = (id: string) => {
-    const anterior = monthlyGoals;
+    const indice = monthlyGoals.findIndex(g => g.id === id);
+    const removida = monthlyGoals[indice];
     gravar(
-      () => { setMonthlyGoals(prev => prev.filter(g => g.id !== id)); return () => setMonthlyGoals(anterior); },
+      () => { setMonthlyGoals(prev => prev.filter(g => g.id !== id));
+              return () => setMonthlyGoals(prev => { if (!removida) return prev;
+                const prox = [...prev]; prox.splice(Math.max(0, indice), 0, removida); return prox; }); },
       () => supabase.from('monthly_goals').delete().eq('id', id)
     );
   };
@@ -909,10 +948,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const valorAtual = alvo.valorAtual + amount;
     const concluida = valorAtual >= alvo.valorAlvo;
     const status: MonthlyGoal['status'] = concluida ? 'concluida' : 'em_andamento';
-    const anterior = monthlyGoals;
     gravar(
       () => { setMonthlyGoals(prev => prev.map(g => g.id === goalId ? { ...g, valorAtual, status } : g));
-              return () => setMonthlyGoals(anterior); },
+              return () => setMonthlyGoals(prev => prev.map(g => g.id === goalId ? alvo : g)); },
       () => supabase.from('monthly_goals').update({ valor_atual: valorAtual, status }).eq('id', goalId),
       concluida
         ? `Parabéns! Meta "${alvo.nome}" concluída com sucesso! 🎉`
@@ -921,10 +959,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // FINANCIAL GOALS (LONG TERM)
-  const addFinancialGoal = (goal: Omit<FinancialGoal, 'id' | 'valorAtual' | 'status'>) => {
+  const addFinancialGoal = (
+    goal: Omit<FinancialGoal, 'id' | 'valorAtual' | 'status'>
+      & { valorAtual?: number; status?: FinancialGoal['status'] }
+  ) => {
+    // O formulário tem campo de valor já guardado. Antes ele era descartado em
+    // silêncio, porque os padrões vinham depois do espalhamento.
     const created: FinancialGoal = {
-      donoId: currentUser.id, ...goal, id: crypto.randomUUID(),
-      valorAtual: 0, status: 'em_andamento'
+      donoId: currentUser.id,
+      ...goal,
+      id: crypto.randomUUID(),
+      valorAtual: goal.valorAtual ?? 0,
+      status: goal.status ?? 'em_andamento'
     };
     gravar(
       () => { setFinancialGoals(prev => [created, ...prev]);
@@ -935,19 +981,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const updateFinancialGoal = (id: string, data: Partial<FinancialGoal>) => {
-    const anterior = financialGoals;
+    const anterior = financialGoals.find(f => f.id === id);
     gravar(
       () => { setFinancialGoals(prev => prev.map(f => f.id === id ? { ...f, ...data } : f));
-              return () => setFinancialGoals(anterior); },
+              return () => setFinancialGoals(prev => prev.map(f => f.id === id && anterior ? anterior : f)); },
       () => supabase.from('financial_goals').update(deFinancialGoal(data)).eq('id', id),
       'Meta de longo prazo atualizada!'
     );
   };
 
   const deleteFinancialGoal = (id: string) => {
-    const anterior = financialGoals;
+    const indice = financialGoals.findIndex(f => f.id === id);
+    const removida = financialGoals[indice];
     gravar(
-      () => { setFinancialGoals(prev => prev.filter(f => f.id !== id)); return () => setFinancialGoals(anterior); },
+      () => { setFinancialGoals(prev => prev.filter(f => f.id !== id));
+              return () => setFinancialGoals(prev => { if (!removida) return prev;
+                const prox = [...prev]; prox.splice(Math.max(0, indice), 0, removida); return prox; }); },
       () => supabase.from('financial_goals').delete().eq('id', id)
     );
   };
@@ -958,10 +1007,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const valorAtual = alvo.valorAtual + amount;
     const concluida = valorAtual >= alvo.valorAlvo;
     const status: FinancialGoal['status'] = concluida ? 'concluida' : 'em_andamento';
-    const anterior = financialGoals;
     gravar(
       () => { setFinancialGoals(prev => prev.map(f => f.id === goalId ? { ...f, valorAtual, status } : f));
-              return () => setFinancialGoals(anterior); },
+              return () => setFinancialGoals(prev => prev.map(f => f.id === goalId ? alvo : f)); },
       () => supabase.from('financial_goals').update({ valor_atual: valorAtual, status }).eq('id', goalId),
       concluida
         ? `Incrível! Vocês atingiram o objetivo "${alvo.nome}"! 🥂💜`
@@ -981,19 +1029,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const updateDebt = (id: string, data: Partial<Debt>) => {
-    const anterior = debts;
+    const anterior = debts.find(d => d.id === id);
     gravar(
       () => { setDebts(prev => prev.map(d => d.id === id ? { ...d, ...data } : d));
-              return () => setDebts(anterior); },
+              return () => setDebts(prev => prev.map(d => d.id === id && anterior ? anterior : d)); },
       () => supabase.from('debts').update(deDebt(data)).eq('id', id),
       'Dívida atualizada!'
     );
   };
 
   const deleteDebt = (id: string) => {
-    const anterior = debts;
+    const indice = debts.findIndex(d => d.id === id);
+    const removida = debts[indice];
     gravar(
-      () => { setDebts(prev => prev.filter(d => d.id !== id)); return () => setDebts(anterior); },
+      () => { setDebts(prev => prev.filter(d => d.id !== id));
+              return () => setDebts(prev => { if (!removida) return prev;
+                const prox = [...prev]; prox.splice(Math.max(0, indice), 0, removida); return prox; }); },
       () => supabase.from('debts').delete().eq('id', id)
     );
   };
@@ -1004,10 +1055,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     // O banco recusa valor_pago acima do total; o clamp aqui evita o erro cru.
     const valorPago = Math.min(alvo.valorTotal, alvo.valorPago + amount);
     const quitada = valorPago >= alvo.valorTotal;
-    const anterior = debts;
     gravar(
       () => { setDebts(prev => prev.map(d => d.id === id ? { ...d, valorPago } : d));
-              return () => setDebts(anterior); },
+              return () => setDebts(prev => prev.map(d => d.id === id ? alvo : d)); },
       () => supabase.from('debts').update({ valor_pago: valorPago }).eq('id', id),
       quitada
         ? `Uhuuul! Dívida "${alvo.nome}" quitada integralmente! 🥳`
@@ -1023,7 +1073,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     gravar(
       () => {
         setBudgets(prev => prev.some(b => b.categoria === categoria)
-          ? prev.map(b => b.categoria === categoria ? { ...b, limite } : b)
+          ? prev.map(b => b.categoria === categoria ? { ...b, limite, donoId: currentUser.id } : b)
           : [...prev, { categoria, limite, donoId: currentUser.id }]);
         return () => setBudgets(anterior);
       },
@@ -1123,28 +1173,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     showToast(`Plano alterado para ${plano.toUpperCase()}!`, 'info');
   };
 
-  /**
-   * Com os dados em banco, isto deixou de ser "restaurar a demonstração" e
-   * passaria a ser apagar os lançamentos reais do casal — sem confirmação, por
-   * um botão no cabeçalho. Fica restrito ao modo demonstração e só preenche a
-   * tela, sem gravar: quem quiser recomeçar de verdade apaga item a item, que
-   * é reversível.
-   */
-  const resetToDefaultData = () => {
-    if (import.meta.env.VITE_DEMO_MODE !== 'true') {
-      showToast('Disponível apenas no modo de demonstração.', 'info');
-      return;
-    }
-    setExpenses(mockExpenses);
-    setIncomes(mockIncomes);
-    setMonthlyGoals(mockMonthlyGoals);
-    setFinancialGoals(mockFinancialGoals);
-    setDebts(mockDebts);
-    setBudgets(mockBudgets);
-    setIncomeRecurrenceConfigs(mockIncomeRecurrenceConfigs);
-    showToast('Tela preenchida com dados de demonstração (não salvos).', 'info');
-  };
-
   return (
     <AppContext.Provider
       value={{
@@ -1213,7 +1241,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setSubscriptionPlan,
         toasts,
         showToast,
-        resetToDefaultData
       }}
     >
       {children}
