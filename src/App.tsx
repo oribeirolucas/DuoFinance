@@ -3,6 +3,8 @@ import { AppProvider, useApp } from './context/AppContext';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { AuthView } from './components/Auth/AuthView';
+import { ToastContainer } from './components/ToastContainer';
+import { Debt } from './types';
 
 // Views
 import { DashboardView } from './components/Views/DashboardView';
@@ -21,6 +23,7 @@ import { ExpenseModal } from './components/Modals/ExpenseModal';
 import { IncomeModal } from './components/Modals/IncomeModal';
 import { IncomeRecurrenceModal } from './components/Modals/IncomeRecurrenceModal';
 import { PartnerInviteModal } from './components/Modals/PartnerInviteModal';
+import { DebtModal } from './components/Modals/DebtModal';
 
 const MainLayout: React.FC = () => {
   const { isAuthenticated, activeTab } = useApp();
@@ -33,6 +36,13 @@ const MainLayout: React.FC = () => {
   const [incomeModalOpen, setIncomeModalOpen] = useState(false);
   const [incomeRecurrenceModalOpen, setIncomeRecurrenceModalOpen] = useState(false);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [debtModalOpen, setDebtModalOpen] = useState(false);
+  const [debtToEdit, setDebtToEdit] = useState<Debt | null>(null);
+
+  const openDebtModal = (debt?: Debt) => {
+    setDebtToEdit(debt ?? null);
+    setDebtModalOpen(true);
+  };
 
   useEffect(() => {
     localStorage.setItem('duo_finance_sidebar_collapsed', String(collapsed));
@@ -65,7 +75,7 @@ const MainLayout: React.FC = () => {
       case 'orcamento':
         return <BudgetView />;
       case 'dividas':
-        return <DebtsView onOpenExpenseModal={() => setExpenseModalOpen(true)} />;
+        return <DebtsView onOpenDebtModal={openDebtModal} />;
       case 'metas':
         return <GoalsView />;
       case 'metas-financeiras':
@@ -127,6 +137,12 @@ const MainLayout: React.FC = () => {
         isOpen={inviteModalOpen}
         onClose={() => setInviteModalOpen(false)}
       />
+
+      <DebtModal
+        isOpen={debtModalOpen}
+        onClose={() => setDebtModalOpen(false)}
+        initialDebt={debtToEdit}
+      />
     </div>
   );
 };
@@ -135,6 +151,8 @@ export default function App() {
   return (
     <AppProvider>
       <MainLayout />
+      {/* Fora do MainLayout: AuthView retorna cedo, e os toasts de login precisam aparecer. */}
+      <ToastContainer />
     </AppProvider>
   );
 }

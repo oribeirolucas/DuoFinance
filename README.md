@@ -16,8 +16,8 @@ Duo Finance é uma aplicação web para casais organizarem a vida financeira em 
 | Gráficos | [Recharts](https://recharts.org) |
 | Animação | [Motion](https://motion.dev) |
 | Ícones | [lucide-react](https://lucide.dev) |
-| IA | [@google/genai](https://ai.google.dev) (Gemini) |
-| Backend leve | [Express](https://expressjs.com) via `tsx` |
+
+> Hoje o app é só frontend: não há backend, e todos os dados vivem no `localStorage` do navegador. Veja [`AGENTS.md`](AGENTS.md) para o fluxo de trabalho.
 
 ## Estrutura
 
@@ -45,9 +45,8 @@ Pré-requisitos: Node 18+ e um gerenciador de pacotes (o repo versiona `bun.lock
 # 1. instalar dependências
 npm install          # ou: bun install
 
-# 2. configurar variáveis de ambiente
+# 2. (opcional) configurar variáveis de ambiente
 cp .env.example .env.local
-#   edite .env.local e preencha GEMINI_API_KEY
 
 # 3. subir o ambiente de desenvolvimento
 npm run dev          # http://localhost:3000
@@ -57,11 +56,9 @@ npm run dev          # http://localhost:3000
 
 | Variável | Obrigatória | Descrição |
 |---|---|---|
-| `GEMINI_API_KEY` | sim | Chave da API Gemini (usada no lado servidor). |
-| `APP_URL` | — | URL de hospedagem da aplicação. |
 | `VITE_DEMO_MODE` | — | `"true"` exibe os atalhos de login rápido de demonstração. |
 
-> **Atenção:** segredos (como `GEMINI_API_KEY`) ficam no lado servidor. **Nunca** exponha chaves sensíveis via `VITE_*`, pois tudo com prefixo `VITE_` vai para o bundle do cliente.
+> **Atenção:** tudo com prefixo `VITE_` vai para o bundle do cliente. **Nunca** coloque segredo em `VITE_*`.
 
 ## Scripts
 
@@ -71,7 +68,7 @@ npm run dev          # http://localhost:3000
 | `npm run build` | Build de produção. |
 | `npm run preview` | Serve o build para conferência. |
 | `npm run lint` | Type-check (`tsc --noEmit`). |
-| `npm run clean` | Remove `dist` e `server.js`. |
+| `npm run clean` | Remove `dist`. |
 
 ## Fluxo de trabalho
 
