@@ -113,7 +113,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({ isOpen, onClose, ini
               placeholder="Ex: Supermercado, Aluguel, Netflix"
               value={descricao}
               onChange={(e) => setDescricao(e.target.value)}
-              className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
             />
           </div>
 
@@ -130,7 +130,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({ isOpen, onClose, ini
                 placeholder="0,00"
                 value={valor}
                 onChange={(e) => setValor(e.target.value)}
-                className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 font-bold text-slate-800"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 font-bold text-slate-800"
               />
             </div>
 
@@ -143,7 +143,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({ isOpen, onClose, ini
                 required
                 value={data}
                 onChange={(e) => setData(e.target.value)}
-                className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
               />
             </div>
           </div>
@@ -156,7 +156,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({ isOpen, onClose, ini
             <select
               value={categoria}
               onChange={(e) => setCategoria(e.target.value as ExpenseCategory)}
-              className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
             >
               {CATEGORIES.map((cat) => (
                 <option key={cat} value={cat}>
@@ -219,7 +219,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({ isOpen, onClose, ini
               placeholder="Ex: Paguei via PIX no cartão do Banco do Brasil"
               value={observacao}
               onChange={(e) => setObservacao(e.target.value)}
-              className="campo-form w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+              className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
             />
           </div>
 

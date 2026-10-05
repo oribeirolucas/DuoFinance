@@ -28,25 +28,6 @@
   }
 }
 
-/* Campo de formulário.
-   Input, select e textarea não declaravam cor de texto, então no tema escuro
-   herdavam o claro do body e apareciam sobre o fundo claro do próprio campo:
-   branco no branco, legível só ao selecionar.
-
-   Declara a cor escura e nada mais. Fica em @layer components de propósito:
-   assim as utilidades do Tailwind, que moram em @layer utilities, continuam
-   vencendo — os campos com acento (valor em verde, dívida em rosa) mantêm a
-   cor deles.
-
-   Escurecer o corpo dos modais no tema escuro é outro trabalho, maior: título,
-   rótulos e badges precisariam de variantes próprias, senão o remédio fica
-   pior que a doença. */
-@layer components {
-  .campo-form {
-    color: #0F172A;
-  }
-}
-
 /* Bento Grid Card Utility */
 .bento-card {
   background-color: #ffffff;

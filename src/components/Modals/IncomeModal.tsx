@@ -111,7 +111,7 @@ export const IncomeModal: React.FC<IncomeModalProps> = ({ isOpen, onClose, initi
               placeholder="Ex: Salário Mensal, Freelance Logo"
               value={descricao}
               onChange={(e) => setDescricao(e.target.value)}
-              className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </div>
 
@@ -128,7 +128,7 @@ export const IncomeModal: React.FC<IncomeModalProps> = ({ isOpen, onClose, initi
                 placeholder="0,00"
                 value={valor}
                 onChange={(e) => setValor(e.target.value)}
-                className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-emerald-700"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-emerald-700"
               />
             </div>
 
@@ -141,7 +141,7 @@ export const IncomeModal: React.FC<IncomeModalProps> = ({ isOpen, onClose, initi
                 required
                 value={data}
                 onChange={(e) => setData(e.target.value)}
-                className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
           </div>
@@ -155,7 +155,7 @@ export const IncomeModal: React.FC<IncomeModalProps> = ({ isOpen, onClose, initi
               <select
                 value={fonte}
                 onChange={(e) => setFonte(e.target.value)}
-                className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
               >
                 {SOURCES.map((s) => (
                   <option key={s} value={s}>
@@ -172,7 +172,7 @@ export const IncomeModal: React.FC<IncomeModalProps> = ({ isOpen, onClose, initi
               <select
                 value={tipo}
                 onChange={(e) => setTipo(e.target.value as any)}
-                className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
               >
                 {TIPOS.map((t) => (
                   <option key={t.value} value={t.value}>
@@ -222,7 +222,7 @@ export const IncomeModal: React.FC<IncomeModalProps> = ({ isOpen, onClose, initi
               placeholder="Ex: Recebido via Pix no Itaú"
               value={observacao}
               onChange={(e) => setObservacao(e.target.value)}
-              className="campo-form w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </div>
 

@@ -205,7 +205,7 @@ export const IncomeRecurrenceModal: React.FC<IncomeRecurrenceModalProps> = ({ is
                   min="0"
                   value={salarioInput}
                   onChange={(e) => setSalarioInput(e.target.value)}
-                  className="campo-form w-full pl-9 pr-3 py-1.5 rounded-lg border border-purple-200 text-lg font-extrabold text-purple-700 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-purple-200 text-lg font-extrabold text-purple-700 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
               </div>
             </div>
@@ -240,7 +240,7 @@ export const IncomeRecurrenceModal: React.FC<IncomeRecurrenceModalProps> = ({ is
                 <select
                   value={diaRecebimento}
                   onChange={(e) => setDiaRecebimento(Number(e.target.value))}
-                  className="campo-form w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
                 >
                   {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
                     <option key={d} value={d}>
@@ -285,7 +285,7 @@ export const IncomeRecurrenceModal: React.FC<IncomeRecurrenceModalProps> = ({ is
                     <select
                       value={p.mes}
                       onChange={(e) => handleUpdateFeriasMes(idx, Number(e.target.value))}
-                      className="campo-form flex-1 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
                     >
                       {MESES.map((m) => (
                         <option key={m.value} value={m.value}>

@@ -90,7 +90,7 @@ export const GoalModal: React.FC<GoalModalProps> = ({ isOpen, onClose, initialGo
               placeholder="Ex: Fundo de reserva, Viagem de fim de ano"
               value={nome}
               onChange={(e) => setNome(e.target.value)}
-              className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
 
@@ -103,7 +103,7 @@ export const GoalModal: React.FC<GoalModalProps> = ({ isOpen, onClose, initialGo
               placeholder="Ex: Economizar no supermercado e guardar a diferença"
               value={descricao}
               onChange={(e) => setDescricao(e.target.value)}
-              className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
 
@@ -119,7 +119,7 @@ export const GoalModal: React.FC<GoalModalProps> = ({ isOpen, onClose, initialGo
                 placeholder="0,00"
                 value={valorAlvo}
                 onChange={(e) => setValorAlvo(e.target.value)}
-                className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
 
@@ -131,7 +131,7 @@ export const GoalModal: React.FC<GoalModalProps> = ({ isOpen, onClose, initialGo
                 type="text"
                 value={mes}
                 onChange={(e) => setMes(e.target.value)}
-                className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
           </div>

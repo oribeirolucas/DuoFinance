@@ -297,7 +297,7 @@ export const GoalsView: React.FC = () => {
                   placeholder="Ex: Reserva de Emergência"
                   value={nome}
                   onChange={(e) => setNome(e.target.value)}
-                  className="campo-form w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
               </div>
 
@@ -309,7 +309,7 @@ export const GoalsView: React.FC = () => {
                   placeholder="2000"
                   value={valorAlvo}
                   onChange={(e) => setValorAlvo(e.target.value)}
-                  className="campo-form w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
               </div>
 
@@ -320,7 +320,7 @@ export const GoalsView: React.FC = () => {
                   placeholder="Julho/2026"
                   value={mes}
                   onChange={(e) => setMes(e.target.value)}
-                  className="campo-form w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
               </div>
 
@@ -331,7 +331,7 @@ export const GoalsView: React.FC = () => {
                   value={descricao}
                   onChange={(e) => setDescricao(e.target.value)}
                   rows={2}
-                  className="campo-form w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
               </div>
 
@@ -366,7 +366,7 @@ export const GoalsView: React.FC = () => {
                   placeholder="250"
                   value={contributionValue}
                   onChange={(e) => setContributionValue(e.target.value)}
-                  className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-purple-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-purple-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
               </div>
 
