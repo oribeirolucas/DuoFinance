@@ -1,4 +1,4 @@
-# 💜 Duo Finance
+# Duo Finance
 
 > Gestão financeira para casais — **dois sonhos, um só planejamento.**
 
@@ -6,7 +6,7 @@ Duo Finance é uma aplicação web para casais organizarem a vida financeira em 
 
 ---
 
-## ✨ Stack
+## Stack
 
 | Camada | Tecnologia |
 |---|---|
@@ -19,7 +19,7 @@ Duo Finance é uma aplicação web para casais organizarem a vida financeira em 
 | IA | [@google/genai](https://ai.google.dev) (Gemini) |
 | Backend leve | [Express](https://expressjs.com) via `tsx` |
 
-## 📁 Estrutura
+## Estrutura
 
 ```text
 DuoFinance/
@@ -37,7 +37,7 @@ DuoFinance/
 └── vite.config.ts
 ```
 
-## 🚀 Começando
+## Começando
 
 Pré-requisitos: Node 18+ e um gerenciador de pacotes (o repo versiona `bun.lock`, mas os scripts `npm` funcionam normalmente).
 
@@ -61,9 +61,9 @@ npm run dev          # http://localhost:3000
 | `APP_URL` | — | URL de hospedagem da aplicação. |
 | `VITE_DEMO_MODE` | — | `"true"` exibe os atalhos de login rápido de demonstração. |
 
-> ⚠️ Segredos (como `GEMINI_API_KEY`) ficam no lado servidor. **Nunca** exponha chaves sensíveis via `VITE_*`, pois tudo com prefixo `VITE_` vai para o bundle do cliente.
+> **Atenção:** segredos (como `GEMINI_API_KEY`) ficam no lado servidor. **Nunca** exponha chaves sensíveis via `VITE_*`, pois tudo com prefixo `VITE_` vai para o bundle do cliente.
 
-## 📜 Scripts
+## Scripts
 
 | Comando | O que faz |
 |---|---|
@@ -73,7 +73,7 @@ npm run dev          # http://localhost:3000
 | `npm run lint` | Type-check (`tsc --noEmit`). |
 | `npm run clean` | Remove `dist` e `server.js`. |
 
-## 🔁 Fluxo de trabalho
+## Fluxo de trabalho
 
 Projeto de um único desenvolvedor, com fluxo leve, porém com `main` sempre estável. Usa duas branches de longa duração — `develop` (integração do dia a dia) e `main` (release). Detalhes em [`AGENTS.md`](AGENTS.md).
 
@@ -94,7 +94,7 @@ Convenções principais:
 - Commits em Conventional Commits (`feat:`, `fix:`, `refactor:`, ...).
 - Merge com `--no-ff` por padrão; `main` só recebe código via publicação explícita; push nunca é automático.
 
-### 👉 Como usar as skills (passo a passo)
+### Como usar as skills (passo a passo)
 
 Você **não** precisa decorar comandos de git. É só conversar com o agente de IA em linguagem natural — ele segue as skills e cuida das branches e merges pra você. As skills vivem em `.agents/skills/` e funcionam em qualquer agente que leia essa pasta (nada pra instalar).
 
@@ -133,9 +133,9 @@ Pode publicar
 
 O agente roda os gates em `develop`, **te mostra exatamente o que vai entrar** na `main` e espera a sua confirmação antes de mesclar. Nada vai para `main` sem você aprovar.
 
-> 💡 Dica para começar: tente uma tarefa pequena primeiro (ex.: "faça a tarefa: trocar o texto do botão de login") para ver o fluxo inteiro funcionando sem risco.
+> Dica para começar: tente uma tarefa pequena primeiro (ex.: "faça a tarefa: trocar o texto do botão de login") para ver o fluxo inteiro funcionando sem risco.
 
-## 🤖 Ferramentas recomendadas (MCP)
+## Ferramentas recomendadas (MCP)
 
 As skills acima funcionam só com o `git` e o GitHub CLI (`gh`), mas dois servidores MCP deixam o fluxo bem mais poderoso. **Ambos são opcionais** — você pode usar todo o fluxo de trabalho sem eles e configurá-los depois, quando quiser. Um MCP é só uma "ponte" que dá ao agente acesso a uma ferramenta externa (o GitHub, ou um mapa do seu código).
 
@@ -184,5 +184,5 @@ codegraph init
 ---
 
 <div align="center">
-<sub>Feito com 💜 para quem planeja a vida a dois.</sub>
+<sub>Feito para quem planeja a vida a dois.</sub>
 </div>
