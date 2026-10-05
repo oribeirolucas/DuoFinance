@@ -176,7 +176,7 @@ export const PartnerView: React.FC<PartnerViewProps> = ({ onOpenInviteModal }) =
                     placeholder="parceiro@exemplo.com"
                     value={inviteEmail}
                     onChange={(e) => setInviteEmail(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
                   />
                 </div>
                 <button
@@ -218,7 +218,7 @@ export const PartnerView: React.FC<PartnerViewProps> = ({ onOpenInviteModal }) =
                     placeholder="Ex: DUO-8492-LOVE"
                     value={tokenInput}
                     onChange={(e) => setTokenInput(e.target.value.toUpperCase())}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-mono uppercase focus:outline-none focus:ring-2 focus:ring-pink-500"
+                    className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-mono uppercase focus:outline-none focus:ring-2 focus:ring-pink-500"
                   />
                 </div>
                 <button
