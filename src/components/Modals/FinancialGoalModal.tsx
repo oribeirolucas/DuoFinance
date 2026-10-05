@@ -107,7 +107,7 @@ export const FinancialGoalModal: React.FC<FinancialGoalModalProps> = ({ isOpen, 
               placeholder="Ex: Entrada do Apê, Viagem Itália 2027, SUV Híbrido"
               value={nome}
               onChange={(e) => setNome(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+              className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
             />
           </div>
 
@@ -120,7 +120,7 @@ export const FinancialGoalModal: React.FC<FinancialGoalModalProps> = ({ isOpen, 
               placeholder="Ex: Apê de 3 quartos com varanda na Zona Sul"
               value={descricao}
               onChange={(e) => setDescricao(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+              className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
             />
           </div>
 
@@ -136,7 +136,7 @@ export const FinancialGoalModal: React.FC<FinancialGoalModalProps> = ({ isOpen, 
                 placeholder="100.000,00"
                 value={valorAlvo}
                 onChange={(e) => setValorAlvo(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500"
               />
             </div>
 
@@ -150,7 +150,7 @@ export const FinancialGoalModal: React.FC<FinancialGoalModalProps> = ({ isOpen, 
                 placeholder="2.500,00"
                 value={metaMensal}
                 onChange={(e) => setMetaMensal(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
               />
             </div>
           </div>
@@ -163,7 +163,7 @@ export const FinancialGoalModal: React.FC<FinancialGoalModalProps> = ({ isOpen, 
               <select
                 value={categoria}
                 onChange={(e) => setCategoria(e.target.value as any)}
-                className="w-full px-2.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                className="campo-form w-full px-2.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
               >
                 <option value="casa">🏠 Casa</option>
                 <option value="viagem">✈️ Viagem</option>
@@ -181,7 +181,7 @@ export const FinancialGoalModal: React.FC<FinancialGoalModalProps> = ({ isOpen, 
                 type="date"
                 value={prazo}
                 onChange={(e) => setPrazo(e.target.value)}
-                className="w-full px-2 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="campo-form w-full px-2 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
               />
             </div>
 
@@ -192,7 +192,7 @@ export const FinancialGoalModal: React.FC<FinancialGoalModalProps> = ({ isOpen, 
               <select
                 value={prioridade}
                 onChange={(e) => setPrioridade(e.target.value as any)}
-                className="w-full px-2 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                className="campo-form w-full px-2 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
               >
                 <option value="alta">🔴 Alta</option>
                 <option value="media">🟡 Média</option>

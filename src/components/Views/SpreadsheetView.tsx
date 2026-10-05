@@ -144,7 +144,7 @@ export const SpreadsheetView: React.FC = () => {
             placeholder="Buscar por nome, tag ou fonte..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+            className="campo-form w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20"
           />
         </div>
 
@@ -153,7 +153,7 @@ export const SpreadsheetView: React.FC = () => {
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value as any)}
-            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none"
+            className="campo-form px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none"
           >
             <option value="all">Todos os Tipos (Entradas e Saídas)</option>
             <option value="despesa">Apenas Despesas</option>
@@ -164,7 +164,7 @@ export const SpreadsheetView: React.FC = () => {
           <select
             value={userFilter}
             onChange={(e) => setUserFilter(e.target.value)}
-            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none"
+            className="campo-form px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none"
           >
             <option value="all">Todos os Usuários</option>
             {pairUsers.map(u => (

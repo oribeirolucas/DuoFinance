@@ -356,7 +356,7 @@ export const FinancialGoalsView: React.FC = () => {
                   placeholder="Ex: Entrada do Apartamento"
                   value={nome}
                   onChange={(e) => setNome(e.target.value)}
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="campo-form w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
               </div>
 
@@ -369,7 +369,7 @@ export const FinancialGoalsView: React.FC = () => {
                     placeholder="120000"
                     value={valorAlvo}
                     onChange={(e) => setValorAlvo(e.target.value)}
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    className="campo-form w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
                   />
                 </div>
                 <div>
@@ -379,7 +379,7 @@ export const FinancialGoalsView: React.FC = () => {
                     placeholder="25000"
                     value={valorAtual}
                     onChange={(e) => setValorAtual(e.target.value)}
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    className="campo-form w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
                   />
                 </div>
               </div>
@@ -390,7 +390,7 @@ export const FinancialGoalsView: React.FC = () => {
                   <select
                     value={categoria}
                     onChange={(e) => setCategoria(e.target.value as any)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    className="campo-form w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
                   >
                     <option value="casa">Imóvel / Casa</option>
                     <option value="carro">Veículo / Carro</option>
@@ -405,7 +405,7 @@ export const FinancialGoalsView: React.FC = () => {
                   <select
                     value={prioridade}
                     onChange={(e) => setPrioridade(e.target.value as any)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    className="campo-form w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
                   >
                     <option value="alta">Alta</option>
                     <option value="media">Média</option>
@@ -420,7 +420,7 @@ export const FinancialGoalsView: React.FC = () => {
                   type="date"
                   value={prazo}
                   onChange={(e) => setPrazo(e.target.value)}
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="campo-form w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
               </div>
 
@@ -431,7 +431,7 @@ export const FinancialGoalsView: React.FC = () => {
                   value={descricao}
                   onChange={(e) => setDescricao(e.target.value)}
                   rows={2}
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="campo-form w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
               </div>
 
@@ -466,7 +466,7 @@ export const FinancialGoalsView: React.FC = () => {
                   placeholder="500"
                   value={contributionValue}
                   onChange={(e) => setContributionValue(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-purple-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-purple-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
               </div>
 
