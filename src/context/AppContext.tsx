@@ -275,9 +275,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
    * chamada depois de aceitar ou encerrar uma parceria, quando a associação
    * muda e, com ela, tudo o que o RLS passa a devolver.
    */
-  const recarregarPerfil = async () => {
+  const recarregarPerfil = async (): Promise<boolean> => {
     const usuario = session?.user;
-    if (!usuario) { setPerfis([]); setHouseholdId(''); return; }
+    if (!usuario) { setPerfis([]); setHouseholdId(''); return false; }
 
     const { data, error } = await supabase
       .from('profiles')
@@ -286,7 +286,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (error || !data) {
       showToast('Não foi possível carregar o perfil.', 'error');
       setCarregandoDados(false);
-      return;
+      return false;
     }
 
     setHouseholdId(data.find(l => l.id === usuario.id)?.household_id ?? '');
@@ -298,6 +298,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       salario: Number(linha.salario) || 0,
       corAvatar: linha.cor_avatar
     })));
+    return true;
   };
 
   useEffect(() => {
@@ -1135,6 +1136,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     const convite = Array.isArray(data) ? data[0] : data;
+    if (!convite?.token) {
+      showToast('O servidor não devolveu o código do convite.', 'error');
+      return null;
+    }
     setPartnership(prev => ({
       ...prev,
       status: 'pending',
@@ -1168,10 +1173,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return false;
     }
 
-    // A associação mudou: recarregar é o jeito de trazer os dados do casal e a
-    // nova composição do household de uma vez.
+    // A associação mudou: recarregar traz os dados do casal e a nova composição
+    // do household. A recarga vem ANTES do aviso de sucesso: anunciar primeiro
+    // deixaria a tela exibindo o household antigo enquanto toda escrita falha.
+    const recarregou = await recarregarPerfil();
+    if (!recarregou) {
+      showToast('Parceria criada, mas a tela não atualizou. Recarregue a página.', 'error');
+      return true;
+    }
     showToast('Parceria iniciada! 💜', 'success');
-    await recarregarPerfil();
     return true;
   };
 
@@ -1181,8 +1191,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       showToast('Não foi possível encerrar a parceria.', 'error');
       return false;
     }
-    showToast('Parceria encerrada. Os lançamentos ficaram com a conta original.', 'info');
-    await recarregarPerfil();
+    const recarregou = await recarregarPerfil();
+    if (!recarregou) {
+      showToast('Parceria encerrada, mas a tela não atualizou. Recarregue a página.', 'error');
+      return true;
+    }
+    showToast('Parceria encerrada. Os lançamentos ficaram com a conta que permaneceu.', 'info');
     return true;
   };
 

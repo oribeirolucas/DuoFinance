@@ -37,26 +37,39 @@ export const PartnerView: React.FC<PartnerViewProps> = ({ onOpenInviteModal }) =
   const [inviteEmail, setInviteEmail] = useState('');
   const [tokenInput, setTokenInput] = useState('');
   const [copied, setCopied] = useState(false);
+  const [enviando, setEnviando] = useState(false);
 
   const handleSendInvite = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inviteEmail.trim()) return;
-    const token = await sendInvite(inviteEmail);
-    if (token) setInviteEmail('');
+    if (!inviteEmail.trim() || enviando) return;
+    setEnviando(true);
+    try {
+      const token = await sendInvite(inviteEmail);
+      if (token) setInviteEmail('');
+    } finally {
+      setEnviando(false);
+    }
   };
 
   const handleAcceptInvite = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!tokenInput.trim()) return;
-    const ok = await acceptInvite(tokenInput);
-    if (ok) setTokenInput('');
+    if (!tokenInput.trim() || enviando) return;
+    setEnviando(true);
+    try {
+      const ok = await acceptInvite(tokenInput);
+      if (ok) setTokenInput('');
+    } finally {
+      setEnviando(false);
+    }
   };
 
-  // Encerrar a parceria deixa os lançamentos com a conta original; quem sai
-  // recomeça vazio. Vale confirmar antes.
+  // O texto precisa ser verdadeiro para quem quer que clique: os lançamentos
+  // ficam com a conta que PERMANECE, não com a que criou a parceria. Quem sai
+  // recomeça vazio, seja quem for.
   const handleEndPartnership = () => {
     if (window.confirm(
-      'Encerrar a parceria? Os lançamentos ficam com a conta que criou a parceria, e você recomeça com um espaço vazio.'
+      'Encerrar a parceria? Todos os lançamentos ficam com a conta que permanece, '
+      + 'inclusive os que você registrou. Você recomeça com um espaço vazio.'
     )) {
       void endPartnership();
     }
@@ -189,6 +202,7 @@ export const PartnerView: React.FC<PartnerViewProps> = ({ onOpenInviteModal }) =
                 </div>
                 <button
                   type="submit"
+                  disabled={enviando}
                   className="w-full py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-semibold text-xs transition-colors"
                 >
                   Gerar Código de Convite
@@ -231,6 +245,7 @@ export const PartnerView: React.FC<PartnerViewProps> = ({ onOpenInviteModal }) =
                 </div>
                 <button
                   type="submit"
+                  disabled={enviando}
                   className="w-full py-2.5 bg-pink-600 hover:bg-pink-700 text-white rounded-xl font-semibold text-xs transition-colors"
                 >
                   Conectar Contas Agora
