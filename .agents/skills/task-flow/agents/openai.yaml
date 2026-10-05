@@ -1,0 +1,4 @@
+interface:
+  display_name: "Task Flow"
+  short_description: "Ciclo dev solo: branch de develop, implementação, review opcional, merge em develop e publicação em main"
+  default_prompt: "Use task-flow para fazer a tarefa: <descreva a tarefa>. Abra uma branch a partir de develop, implemente, ofereça o code review e faça o merge em develop. Para publicar, mescle develop em main."
