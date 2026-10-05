@@ -70,7 +70,7 @@ export const AddContributionModal: React.FC<AddContributionModalProps> = ({
               placeholder="0,00"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl border border-slate-200 text-lg font-bold text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="campo-form w-full px-4 py-3 rounded-xl border border-slate-200 text-lg font-bold text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </div>
 

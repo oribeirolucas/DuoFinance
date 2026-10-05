@@ -167,7 +167,7 @@ export const BudgetView: React.FC = () => {
                             type="number"
                             value={editLimitValue}
                             onChange={(e) => setEditLimitValue(e.target.value)}
-                            className="w-24 px-2 py-1 border border-purple-400 rounded-lg text-xs font-bold focus:outline-none"
+                            className="campo-form w-24 px-2 py-1 border border-purple-400 rounded-lg text-xs font-bold focus:outline-none"
                             autoFocus
                           />
                           <button
