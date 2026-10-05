@@ -52,6 +52,9 @@ export const DebtModal: React.FC<DebtModalProps> = ({ isOpen, onClose, initialDe
     // A tela de dívidas divide valorTotal pelo denominador para achar a parcela.
     // Sem o formato N/M, o total colapsaria para 1 e um clique quitaria tudo.
     if (!/^\d+\s*\/\s*\d+$/.test(parcelas.trim())) return;
+    // O banco recusa valor_pago acima do total (debts_pago_nao_excede_total).
+    // Barrar aqui também evita que o usuário veja o erro cru do Postgres.
+    if (!isNaN(numPago) && numPago > numTotal) return;
 
     if (initialDebt) {
       updateDebt(initialDebt.id, {
