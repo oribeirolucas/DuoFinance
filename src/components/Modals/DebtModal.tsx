@@ -49,6 +49,9 @@ export const DebtModal: React.FC<DebtModalProps> = ({ isOpen, onClose, initialDe
     const numJuros = parseFloat(juros.replace(',', '.'));
 
     if (!nome.trim() || isNaN(numTotal) || numTotal <= 0) return;
+    // A tela de dívidas divide valorTotal pelo denominador para achar a parcela.
+    // Sem o formato N/M, o total colapsaria para 1 e um clique quitaria tudo.
+    if (!/^\d+\s*\/\s*\d+$/.test(parcelas.trim())) return;
 
     if (initialDebt) {
       updateDebt(initialDebt.id, {
@@ -161,10 +164,13 @@ export const DebtModal: React.FC<DebtModalProps> = ({ isOpen, onClose, initialDe
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Parcelamento (e.g. 12/24)
+                Parcelamento (pagas/total) *
               </label>
               <input
                 type="text"
+                required
+                pattern="\d+\s*/\s*\d+"
+                title="Use o formato pagas/total, por exemplo 12/24"
                 placeholder="12/24"
                 value={parcelas}
                 onChange={(e) => setParcelas(e.target.value)}

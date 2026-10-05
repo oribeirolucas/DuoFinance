@@ -25,12 +25,19 @@ interface DebtsViewProps {
  * Tudo o que a tela exibe sai daqui — nenhum campo redundante no estado,
  * que sairia de sincronia assim que valorPago mudasse.
  */
+const CENTAVO = 0.005; // tolerância de arredondamento: saldos são moeda, não float exato
+
 const deriveDebt = (debt: Debt) => {
-  const [pagasRaw, totalRaw] = (debt.parcelas || '').split('/');
+  // De "12/24" só o denominador é confiável: o numerador não é atualizado por
+  // payDebtInstallment, que mexe apenas em valorPago. Quantas parcelas já foram
+  // pagas, portanto, se calcula a partir do dinheiro — a única fonte que avança.
+  const totalRaw = (debt.parcelas || '').split('/')[1];
   const totalParcelas = Math.max(1, Number.parseInt(totalRaw, 10) || 1);
-  const parcelasPagas = Math.min(totalParcelas, Math.max(0, Number.parseInt(pagasRaw, 10) || 0));
-  const valorRestante = Math.max(0, debt.valorTotal - debt.valorPago);
   const valorParcela = debt.valorTotal / totalParcelas;
+  const valorRestante = Math.max(0, debt.valorTotal - debt.valorPago);
+  const parcelasPagas = valorParcela > 0
+    ? Math.min(totalParcelas, Math.round(debt.valorPago / valorParcela))
+    : totalParcelas;
   const progresso = debt.valorTotal > 0 ? (debt.valorPago / debt.valorTotal) * 100 : 100;
 
   return { totalParcelas, parcelasPagas, valorRestante, valorParcela, progresso };
@@ -78,10 +85,10 @@ export const DebtsView: React.FC<DebtsViewProps> = ({ onOpenDebtModal }) => {
           <div>
             <p className="text-xs font-semibold uppercase text-slate-500">Compromissos Ativos</p>
             <h3 className="text-2xl font-extrabold text-purple-900">
-              {debts.filter(d => deriveDebt(d).valorRestante > 0).length}
+              {debts.filter(d => deriveDebt(d).valorRestante >= CENTAVO).length}
             </h3>
             <p className="text-[11px] text-slate-400 mt-1">
-              {debts.filter(d => deriveDebt(d).valorRestante <= 0).length} financiamentos liquidados
+              {debts.filter(d => deriveDebt(d).valorRestante < CENTAVO).length} financiamentos liquidados
             </p>
           </div>
           <div className="w-11 h-11 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center">
@@ -119,7 +126,7 @@ export const DebtsView: React.FC<DebtsViewProps> = ({ onOpenDebtModal }) => {
         ) : (
           debts.map(debt => {
             const { valorRestante, valorParcela, parcelasPagas, totalParcelas, progresso } = deriveDebt(debt);
-            const isPaidOff = valorRestante <= 0;
+            const isPaidOff = valorRestante < CENTAVO;
             const responsavelUser = users.find(u => u.id === debt.registradoPor);
 
             return (
