@@ -111,7 +111,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenExpenseModal }
             placeholder="Buscar despesa ou nota..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="campo-form w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all"
+            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all"
           />
         </div>
 
@@ -121,7 +121,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenExpenseModal }
           <select
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}
-            className="campo-form px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
           >
             <option value="all">Todas Categorias</option>
             {categories.map(cat => (
@@ -133,7 +133,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenExpenseModal }
           <select
             value={selectedPayer}
             onChange={(e) => setSelectedPayer(e.target.value)}
-            className="campo-form px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
           >
             <option value="all">Quem Pagou (Todos)</option>
             {pairUsers.map(u => (
@@ -145,7 +145,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenExpenseModal }
           <select
             value={selectedStatus}
             onChange={(e) => setSelectedStatus(e.target.value)}
-            className="campo-form px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
           >
             <option value="all">Todos Status</option>
             <option value="pago">Apenas Pagas</option>

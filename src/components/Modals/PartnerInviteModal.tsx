@@ -101,7 +101,7 @@ export const PartnerInviteModal: React.FC<PartnerInviteModalProps> = ({ isOpen, 
                   placeholder="sibeli@exemplo.com.br"
                   value={partnerEmail}
                   onChange={(e) => setPartnerEmail(e.target.value)}
-                  className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500"
                 />
               </div>
 
@@ -148,7 +148,7 @@ export const PartnerInviteModal: React.FC<PartnerInviteModalProps> = ({ isOpen, 
                 placeholder="Ex: DUO-8492-LOVE"
                 value={enterToken}
                 onChange={(e) => setEnterToken(e.target.value.toUpperCase())}
-                className="campo-form w-full px-3.5 py-3 rounded-xl border border-slate-200 text-sm font-mono tracking-widest uppercase focus:outline-none focus:ring-2 focus:ring-pink-500"
+                className="w-full px-3.5 py-3 rounded-xl border border-slate-200 text-sm font-mono tracking-widest uppercase focus:outline-none focus:ring-2 focus:ring-pink-500"
               />
             </div>
 

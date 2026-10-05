@@ -52,9 +52,6 @@ export const DebtModal: React.FC<DebtModalProps> = ({ isOpen, onClose, initialDe
     // A tela de dívidas divide valorTotal pelo denominador para achar a parcela.
     // Sem o formato N/M, o total colapsaria para 1 e um clique quitaria tudo.
     if (!/^\d+\s*\/\s*\d+$/.test(parcelas.trim())) return;
-    // O banco recusa valor_pago acima do total (debts_pago_nao_excede_total).
-    // Barrar aqui também evita que o usuário veja o erro cru do Postgres.
-    if (!isNaN(numPago) && numPago > numTotal) return;
 
     if (initialDebt) {
       updateDebt(initialDebt.id, {
@@ -115,7 +112,7 @@ export const DebtModal: React.FC<DebtModalProps> = ({ isOpen, onClose, initialDe
               placeholder="Ex: Financiamento HB20, Cartão Nubank"
               value={nome}
               onChange={(e) => setNome(e.target.value)}
-              className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
             />
           </div>
 
@@ -131,7 +128,7 @@ export const DebtModal: React.FC<DebtModalProps> = ({ isOpen, onClose, initialDe
                 placeholder="0,00"
                 value={valorTotal}
                 onChange={(e) => setValorTotal(e.target.value)}
-                className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-rose-600 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-rose-600 focus:outline-none focus:ring-2 focus:ring-rose-500"
               />
             </div>
 
@@ -145,7 +142,7 @@ export const DebtModal: React.FC<DebtModalProps> = ({ isOpen, onClose, initialDe
                 placeholder="0,00"
                 value={valorPago}
                 onChange={(e) => setValorPago(e.target.value)}
-                className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500"
               />
             </div>
           </div>
@@ -161,7 +158,7 @@ export const DebtModal: React.FC<DebtModalProps> = ({ isOpen, onClose, initialDe
                 placeholder="12.0"
                 value={juros}
                 onChange={(e) => setJuros(e.target.value)}
-                className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
               />
             </div>
 
@@ -177,7 +174,7 @@ export const DebtModal: React.FC<DebtModalProps> = ({ isOpen, onClose, initialDe
                 placeholder="12/24"
                 value={parcelas}
                 onChange={(e) => setParcelas(e.target.value)}
-                className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
               />
             </div>
           </div>
@@ -190,7 +187,7 @@ export const DebtModal: React.FC<DebtModalProps> = ({ isOpen, onClose, initialDe
               <select
                 value={dono}
                 onChange={(e) => setDono(e.target.value as 'individual' | 'casal')}
-                className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500 bg-white"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500 bg-white"
               >
                 <option value="casal">Conjunta do Casal</option>
                 <option value="individual">Individual</option>
@@ -205,7 +202,7 @@ export const DebtModal: React.FC<DebtModalProps> = ({ isOpen, onClose, initialDe
                 type="date"
                 value={vencimento}
                 onChange={(e) => setVencimento(e.target.value)}
-                className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
               />
             </div>
           </div>
