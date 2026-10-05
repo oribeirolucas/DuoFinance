@@ -27,7 +27,7 @@ import { PartnerInviteModal } from './components/Modals/PartnerInviteModal';
 import { DebtModal } from './components/Modals/DebtModal';
 
 const MainLayout: React.FC = () => {
-  const { isAuthenticated, authLoading, activeTab } = useApp();
+  const { isAuthenticated, authLoading, carregandoDados, activeTab } = useApp();
 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<boolean>(() => {
@@ -62,6 +62,17 @@ const MainLayout: React.FC = () => {
 
   if (!isAuthenticated) {
     return <AuthView />;
+  }
+
+  // Sem isto, logo após o login a tela mostra R$ 0,00 em tudo enquanto os
+  // dados chegam do banco — o que parece perda de dados, não carregamento.
+  if (carregandoDados) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-3 bg-[#F8F9FF] dark:bg-slate-950">
+        <div className="w-8 h-8 rounded-full border-2 border-purple-200 border-t-purple-600 animate-spin" />
+        <p className="text-xs text-slate-500 dark:text-slate-400">Carregando suas finanças...</p>
+      </div>
+    );
   }
 
   const renderActiveTab = () => {
