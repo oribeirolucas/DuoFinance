@@ -50,6 +50,12 @@ interface AppContextType {
   logout: () => Promise<void>;
   recuperarSenha: (email: string) => Promise<boolean>;
 
+  // Conta do usuário
+  atualizarPerfil: (dados: { nome?: string; salario?: number; avatar?: string }) => Promise<boolean>;
+  enviarFotoPerfil: (arquivo: File) => Promise<string | null>;
+  trocarSenha: (senhaAtual: string, novaSenha: string) => Promise<boolean>;
+  trocarEmail: (novoEmail: string) => Promise<boolean>;
+
   // Users & Active Partner Context
   currentUser: User;
   partner: User | null;
@@ -351,6 +357,103 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     return null;
   })();
+
+  // ---- conta do usuário ----
+
+  const atualizarPerfil = async (dados: { nome?: string; salario?: number; avatar?: string }): Promise<boolean> => {
+    if (!session) return false;
+
+    const linha: Record<string, unknown> = {};
+    if (dados.nome !== undefined) linha.nome = dados.nome.trim();
+    if (dados.salario !== undefined) linha.salario = dados.salario;
+    if (dados.avatar !== undefined) linha.avatar = dados.avatar;
+    if (Object.keys(linha).length === 0) return true;
+
+    const { error } = await supabase.from('profiles').update(linha).eq('id', session.user.id);
+    if (error) {
+      showToast('Não foi possível salvar as alterações.', 'error');
+      return false;
+    }
+
+    setPerfis(prev => prev.map(p => (p.id === session.user.id
+      ? {
+          ...p,
+          nome: dados.nome?.trim() ?? p.nome,
+          salario: dados.salario ?? p.salario,
+          avatar: dados.avatar ?? p.avatar
+        }
+      : p)));
+    showToast('Perfil atualizado.', 'success');
+    return true;
+  };
+
+  const enviarFotoPerfil = async (arquivo: File): Promise<string | null> => {
+    if (!session) return null;
+
+    // As mesmas regras valem no servidor (bucket com limite de 2 MB e lista de
+    // tipos). Checar aqui é só para dar erro imediato em vez de esperar o
+    // upload inteiro subir para ser recusado.
+    const tiposAceitos = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!tiposAceitos.includes(arquivo.type)) {
+      showToast('Use uma imagem JPG, PNG, WEBP ou GIF.', 'error');
+      return null;
+    }
+    if (arquivo.size > 2 * 1024 * 1024) {
+      showToast('A imagem precisa ter no máximo 2 MB.', 'error');
+      return null;
+    }
+
+    // Caminho começa pelo uuid do dono: é o que a policy do bucket exige, e
+    // impede sobrescrever a foto da outra pessoa.
+    const extensao = arquivo.name.split('.').pop()?.toLowerCase() || 'jpg';
+    const caminho = `${session.user.id}/${crypto.randomUUID()}.${extensao}`;
+
+    const { error } = await supabase.storage.from('avatares').upload(caminho, arquivo, {
+      cacheControl: '3600',
+      upsert: false
+    });
+    if (error) {
+      showToast('Não foi possível enviar a imagem.', 'error');
+      return null;
+    }
+
+    const { data } = supabase.storage.from('avatares').getPublicUrl(caminho);
+    return data.publicUrl;
+  };
+
+  const trocarSenha = async (senhaAtual: string, novaSenha: string): Promise<boolean> => {
+    const email = session?.user.email;
+    if (!email) return false;
+
+    // O Supabase troca a senha sem pedir a atual. Exigi-la aqui é o que impede
+    // que uma sessão esquecida aberta num computador alheio vire uma troca de
+    // senha — e, com ela, a perda da conta.
+    const { error: erroAuth } = await supabase.auth.signInWithPassword({ email, password: senhaAtual });
+    if (erroAuth) {
+      showToast('Senha atual incorreta.', 'error');
+      return false;
+    }
+
+    const { error } = await supabase.auth.updateUser({ password: novaSenha });
+    if (error) {
+      showToast(error.message || 'Não foi possível alterar a senha.', 'error');
+      return false;
+    }
+
+    showToast('Senha alterada com sucesso.', 'success');
+    return true;
+  };
+
+  const trocarEmail = async (novoEmail: string): Promise<boolean> => {
+    const { error } = await supabase.auth.updateUser({ email: novoEmail.trim().toLowerCase() });
+    if (error) {
+      showToast(error.message || 'Não foi possível alterar o e-mail.', 'error');
+      return false;
+    }
+    // O e-mail só muda de fato depois da confirmação no endereço novo.
+    showToast('Confirme a troca pelo link enviado ao novo e-mail.', 'info');
+    return true;
+  };
 
   // setCurrentUserId foi removido. Ele assumia a identidade de outra pessoa e
   // carimbava o id dela em tudo que fosse criado depois. Com RLS no banco a
@@ -956,6 +1059,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         signup,
         logout,
         recuperarSenha,
+        atualizarPerfil,
+        enviarFotoPerfil,
+        trocarSenha,
+        trocarEmail,
         currentUser,
         partner,
         users: todosUsuarios,

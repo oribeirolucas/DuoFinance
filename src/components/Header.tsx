@@ -58,6 +58,10 @@ const TAB_TITLES: Record<NavigationTab, { title: string; subtitle: string }> = {
   parceiro: {
     title: 'Meu Parceiro(a) & Parceria',
     subtitle: 'Conecte sua conta com seu parceiro(a) e sincronize finanças'
+  },
+  configuracoes: {
+    title: 'Configurações da Conta',
+    subtitle: 'Foto, dados pessoais, senha e e-mail de acesso'
   }
 };
 
