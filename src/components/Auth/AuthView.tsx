@@ -227,7 +227,7 @@ export const AuthView: React.FC = () => {
                           setRecoveryEmail(e.target.value);
                           if (errorMsg) setErrorMsg('');
                         }}
-                        className="campo-form w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
                       />
                     </div>
                   </div>
@@ -248,7 +248,7 @@ export const AuthView: React.FC = () => {
                           setNome(e.target.value);
                           if (errorMsg) setErrorMsg('');
                         }}
-                        className="campo-form w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
                       />
                     </div>
                   </div>
@@ -269,7 +269,7 @@ export const AuthView: React.FC = () => {
                           setEmail(e.target.value);
                           if (errorMsg) setErrorMsg('');
                         }}
-                        className="campo-form w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
                       />
                     </div>
                   </div>
@@ -301,7 +301,7 @@ export const AuthView: React.FC = () => {
                           setPassword(e.target.value);
                           if (errorMsg) setErrorMsg('');
                         }}
-                        className="campo-form w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
                       />
                     </div>
 
@@ -341,7 +341,7 @@ export const AuthView: React.FC = () => {
                           setConfirmPassword(e.target.value);
                           if (errorMsg) setErrorMsg('');
                         }}
-                        className={`campo-form w-full pl-10 pr-3.5 py-2.5 rounded-xl border text-xs focus:outline-none focus:ring-2 ${
+                        className={`w-full pl-10 pr-3.5 py-2.5 rounded-xl border text-xs focus:outline-none focus:ring-2 ${
                           confirmPassword.length > 0 && !passwordsMatch
                             ? 'border-rose-300 focus:ring-rose-500'
                             : 'border-slate-200 focus:ring-purple-500'
@@ -377,7 +377,7 @@ export const AuthView: React.FC = () => {
                         setSalario(e.target.value);
                         if (errorMsg) setErrorMsg('');
                       }}
-                      className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
                     />
                   </div>
                 )}

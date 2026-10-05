@@ -163,14 +163,11 @@ export const BudgetView: React.FC = () => {
                       <p className="text-[10px] font-semibold text-slate-400 uppercase">Limite Teto</p>
                       {isEditing ? (
                         <div className="flex items-center gap-1 mt-0.5">
-                          {/* bg-white explícito: é o único campo dentro de um
-                              .bento-card, que escurece no tema escuro. Sem
-                              fundo próprio, ficaria escuro no escuro. */}
                           <input
                             type="number"
                             value={editLimitValue}
                             onChange={(e) => setEditLimitValue(e.target.value)}
-                            className="campo-form bg-white w-24 px-2 py-1 border border-purple-400 rounded-lg text-xs font-bold focus:outline-none"
+                            className="campo-form w-24 px-2 py-1 border border-purple-400 rounded-lg text-xs font-bold focus:outline-none"
                             autoFocus
                           />
                           <button
