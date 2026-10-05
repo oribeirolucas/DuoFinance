@@ -3,10 +3,19 @@ import { createClient } from '@supabase/supabase-js';
 const url = import.meta.env.VITE_SUPABASE_URL;
 const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
-if (!url || !publishableKey) {
-  throw new Error(
-    'VITE_SUPABASE_URL e VITE_SUPABASE_PUBLISHABLE_KEY precisam estar definidas. ' +
-    'Copie .env.example para .env.local e preencha.'
+/**
+ * Sem configuração, o app não fica em branco: ele avisa e segue. Um throw no
+ * topo do módulo derrubaria a página inteira assim que qualquer import o
+ * alcançasse — inclusive no modo demo, que existe justamente para rodar sem
+ * backend. Quem depende da sessão checa `supabaseConfigurado` antes.
+ */
+export const supabaseConfigurado = Boolean(url && publishableKey);
+
+if (!supabaseConfigurado) {
+  console.warn(
+    '[duo-finance] VITE_SUPABASE_URL e VITE_SUPABASE_PUBLISHABLE_KEY não estão ' +
+    'definidas. Copie .env.example para .env.local e preencha. Recursos que ' +
+    'dependem de conta ficarão indisponíveis.'
   );
 }
 
@@ -19,7 +28,7 @@ if (!url || !publishableKey) {
  * A chave service_role nunca entra aqui, nem em qualquer arquivo que o Vite
  * empacote: ela ignora RLS por definição.
  */
-export const supabase = createClient(url, publishableKey, {
+export const supabase = createClient(url ?? '', publishableKey ?? '', {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
