@@ -17,7 +17,6 @@ import { GoalsView } from './components/Views/GoalsView';
 import { FinancialGoalsView } from './components/Views/FinancialGoalsView';
 import { SpreadsheetView } from './components/Views/SpreadsheetView';
 import { PartnerView } from './components/Views/PartnerView';
-import { SettingsView } from './components/Views/SettingsView';
 
 // Modals
 import { ExpenseModal } from './components/Modals/ExpenseModal';
@@ -96,8 +95,6 @@ const MainLayout: React.FC = () => {
         return <SpreadsheetView />;
       case 'parceiro':
         return <PartnerView onOpenInviteModal={() => setInviteModalOpen(true)} />;
-      case 'configuracoes':
-        return <SettingsView />;
       default:
         return (
           <DashboardView
