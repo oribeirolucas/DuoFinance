@@ -32,7 +32,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   collapsed,
   onToggleCollapse
 }) => {
-  const { activeTab, setActiveTab, currentUser, partner, setCurrentUserId, logout, partnership } = useApp();
+  const { activeTab, setActiveTab, currentUser, partner, logout, partnership } = useApp();
 
   const menuItems: { id: NavigationTab; label: string; icon: React.FC<{ className?: string }> }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -200,21 +200,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </button>
           </div>
 
-          {/* Partner Switcher Demo button */}
+          {/* Parceria ativa. O botão que trocava de identidade saiu: ele
+              assumia a conta da outra pessoa, o que com autenticação de
+              verdade não é "alternar visão", é entrar como ela. */}
           {partner && (
-            <button
-              onClick={() => setCurrentUserId(partner.id)}
-              title={`Alternar visão para ${partner.nome.split(' ')[0]}`}
-              aria-label={`Alternar visão para ${partner.nome.split(' ')[0]}`}
-              className={`w-full text-xs py-2 px-3 bg-purple-50 dark:bg-purple-950/40 hover:bg-purple-100/80 dark:hover:bg-purple-900/50 border border-purple-200 dark:border-purple-800/50 text-purple-700 dark:text-purple-300 rounded-lg font-medium flex items-center justify-center gap-2 transition-colors ${
+            <div
+              title={`Parceria ativa com ${partner.nome}`}
+              className={`w-full text-xs py-2 px-3 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/50 text-purple-700 dark:text-purple-300 rounded-lg font-medium flex items-center justify-center gap-2 ${
                 collapsed ? 'lg:px-0' : ''
               }`}
             >
               <UserCheck className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
               <span className={collapsed ? 'lg:hidden' : 'block'}>
-                Alternar visão para {partner.nome.split(' ')[0]}
+                Em dupla com {partner.nome.split(' ')[0]}
               </span>
-            </button>
+            </div>
           )}
         </div>
       </aside>

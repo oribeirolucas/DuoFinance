@@ -1,8 +1,8 @@
 import { User, Expense, Income, MonthlyGoal, FinancialGoal, Debt, CategoryBudget, Partnership, Subscription, IncomeRecurrenceConfig } from '../types';
-import { hashPassword } from '../utils/hash';
 
-// Senha padrão de demonstração para usuários de exemplo: "Demo123"
-const DEFAULT_DEMO_PASSWORD_HASH = hashPassword('Demo123');
+// Dados de demonstração. Não há senha aqui: autenticação acontece no servidor,
+// contra o Supabase Auth. Estes dados só preenchem telas enquanto a migração
+// da camada de dados não é concluída.
 
 export const mockIncomeRecurrenceConfigs: IncomeRecurrenceConfig[] = [
   {
@@ -57,7 +57,6 @@ export const mockUsers: User[] = [
     avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
     salario: 7500,
     corAvatar: '#6C63FF',
-    senha: DEFAULT_DEMO_PASSWORD_HASH,
   },
   {
     id: 'user-marina',
@@ -66,7 +65,6 @@ export const mockUsers: User[] = [
     avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80',
     salario: 5000,
     corAvatar: '#FF6584',
-    senha: DEFAULT_DEMO_PASSWORD_HASH,
   }
 ];
 
