@@ -78,10 +78,15 @@ export const AuthView: React.FC = () => {
       }
       setEnviando(true);
       try {
-        // Mostra sucesso independentemente do resultado: dizer "esse e-mail
-        // não existe" entregaria a um estranho quais endereços têm conta.
-        await recuperarSenha(recoveryEmail.trim());
-        setRecoverySubmitted(true);
+        // O servidor responde com sucesso mesmo para e-mail sem conta, então
+        // confirmar o envio não revela quem tem conta. Mas se o envio falhou
+        // de fato, mostrar "E-mail enviado!" seria mentira.
+        const ok = await recuperarSenha(recoveryEmail.trim());
+        if (ok) {
+          setRecoverySubmitted(true);
+        } else {
+          setErrorMsg('Não foi possível enviar agora. Tente novamente em alguns minutos.');
+        }
       } finally {
         setEnviando(false);
       }
@@ -380,14 +385,17 @@ export const AuthView: React.FC = () => {
                 {/* Submit Button */}
                 <button
                   type="submit"
-                  className="w-full py-3 bg-gradient-duo text-white rounded-xl font-bold text-xs shadow-md shadow-purple-500/25 flex items-center justify-center gap-2 hover:opacity-95 transition-all"
+                  disabled={enviando}
+                  aria-busy={enviando}
+                  className="w-full py-3 bg-gradient-duo text-white rounded-xl font-bold text-xs shadow-md shadow-purple-500/25 flex items-center justify-center gap-2 hover:opacity-95 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   <span>
-                    {authScreen === 'cadastro' && 'Cadastrar e Acessar'}
-                    {authScreen === 'login' && 'Entrar na Conta'}
-                    {authScreen === 'esqueci-senha' && 'Enviar link de recuperação'}
+                    {enviando && 'Aguarde...'}
+                    {!enviando && authScreen === 'cadastro' && 'Cadastrar e Acessar'}
+                    {!enviando && authScreen === 'login' && 'Entrar na Conta'}
+                    {!enviando && authScreen === 'esqueci-senha' && 'Enviar link de recuperação'}
                   </span>
-                  <ArrowRight className="w-4 h-4" />
+                  {!enviando && <ArrowRight className="w-4 h-4" />}
                 </button>
               </form>
             )}

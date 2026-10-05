@@ -143,10 +143,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return;
     }
 
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setAuthLoading(false);
-    });
+    // Sem o catch, uma rejeição aqui deixaria authLoading eternamente true e o
+    // app giraria o spinner para sempre, sem formulário e sem explicação.
+    supabase.auth.getSession()
+      .then(({ data }) => setSession(data.session))
+      .catch(() => showToast('Não foi possível verificar a sessão.', 'error'))
+      .finally(() => setAuthLoading(false));
 
     const { data: sub } = supabase.auth.onAuthStateChange((_evento, novaSessao) => {
       setSession(novaSessao);
@@ -322,15 +324,29 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         })()
       : emptyUser);
 
+  /**
+   * Perfis reais somados aos de demonstração.
+   *
+   * Transitório: a identidade já é o uuid da sessão, mas os lançamentos ainda
+   * vivem no localStorage e referenciam ids como 'user-lucas'. Enquanto as
+   * duas coisas coexistem, toda busca por usuário precisa olhar as duas
+   * listas, senão nome de pagador, parceiro e salário aparecem vazios. A fase
+   * que move os dados para o Postgres remove esta mistura inteira.
+   */
+  const todosUsuarios: User[] = [
+    ...perfis,
+    ...users.filter(m => !perfis.some(p => p.id === m.id))
+  ];
+
   const partner: User | null = (() => {
     if (!isAuthenticated) return null;
     if (partnership.status !== 'active') return null;
 
     if (currentUser.id === partnership.user1Id && partnership.user2Id) {
-      return users.find(u => u.id === partnership.user2Id) || null;
+      return todosUsuarios.find(u => u.id === partnership.user2Id) || null;
     }
     if (currentUser.id === partnership.user2Id && partnership.user1Id) {
-      return users.find(u => u.id === partnership.user1Id) || null;
+      return todosUsuarios.find(u => u.id === partnership.user1Id) || null;
     }
 
     return null;
@@ -345,17 +361,35 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const targetId = userId || currentUser.id;
     if (!targetId) return;
 
+    // Perfil real: grava no banco pela função que valida a associação ao
+    // household (set_member_salario), e atualiza a cópia local.
+    if (perfis.some(p => p.id === targetId)) {
+      setPerfis(prev => prev.map(p => (p.id === targetId ? { ...p, salario: novoValor } : p)));
+      void supabase.rpc('set_member_salario', { p_user: targetId, p_valor: novoValor })
+        .then(({ error }) => {
+          if (error) showToast('Não foi possível salvar o salário.', 'error');
+        });
+      return;
+    }
+
+    // Usuário de demonstração, ainda em memória.
     setUsers(prevUsers =>
       prevUsers.map(u => (u.id === targetId ? { ...u, salario: novoValor } : u))
     );
   };
 
+  /**
+   * Transitório, pelo mesmo motivo de todosUsuarios: os lançamentos ainda são
+   * os de demonstração, cujos donos são 'user-lucas' e 'user-marina'. Sem
+   * incluí-los, toda tela de dados fica vazia depois de um login real — o app
+   * pareceria quebrado. Some junto com a migração dos dados.
+   */
+  const idsDemo = users.filter(u => !perfis.some(p => p.id === u.id)).map(u => u.id);
+
   const getHouseholdUserIds = (): string[] => {
     if (!currentUser || !currentUser.id) return [];
-    if (partner && partner.id) {
-      return [currentUser.id, partner.id];
-    }
-    return [currentUser.id];
+    const base = partner && partner.id ? [currentUser.id, partner.id] : [currentUser.id];
+    return [...base, ...idsDemo];
   };
 
   const householdUserIds = getHouseholdUserIds();
@@ -459,15 +493,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     // Com proteção contra enumeração ligada, cadastrar e-mail já existente
-    // "funciona" mas devolve identities vazio. Não é conta nova.
-    if (data.user && data.user.identities && data.user.identities.length === 0) {
-      showToast('Se esse e-mail ainda não tiver conta, enviaremos a confirmação.', 'info');
-      return false;
-    }
+    // "funciona" mas devolve identities vazio. O retorno e a mensagem precisam
+    // ser idênticos aos do cadastro legítimo sem sessão: se um caminho
+    // mostrasse erro e o outro não, bastaria tentar cadastrar um e-mail para
+    // descobrir se ele tem conta — a enumeração que isto deveria impedir.
+    const jaExistia = data.user?.identities?.length === 0;
 
-    // Sem sessão imediata significa que o projeto exige confirmação por e-mail.
-    if (!data.session) {
-      showToast('Conta criada! Confirme o e-mail para entrar.', 'info');
+    if (jaExistia || !data.session) {
+      showToast('Verifique seu e-mail para confirmar a conta.', 'info');
       return true;
     }
 
@@ -490,16 +523,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return false;
     }
 
+    // O Supabase responde com sucesso mesmo para e-mail sem conta, então um
+    // erro aqui é falha real de envio (rede, limite de taxa) — vale informar,
+    // sem revelar nada sobre a existência da conta.
     const { error } = await supabase.auth.resetPasswordForEmail(
       email.trim().toLowerCase(),
       { redirectTo: `${window.location.origin}/` }
     );
 
-    if (error) {
-      showToast('Não foi possível enviar o e-mail de redefinição.', 'error');
-      return false;
-    }
-    return true;
+    return !error;
   };
 
   // CRUD EXPENSES
@@ -576,7 +608,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const syncRecurrentIncomesForUser = (userId: string, year?: number, overrideSalary?: number) => {
     const targetYear = year || new Date().getFullYear();
-    const userToSync = users.find(u => u.id === userId);
+    const userToSync = todosUsuarios.find(u => u.id === userId);
     if (!userToSync) return;
 
     const userSalary = overrideSalary !== undefined ? overrideSalary : (userToSync.salario || 0);
@@ -814,7 +846,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const updatePartnershipStatus = (status: 'none' | 'pending' | 'active', partnerEmail?: string) => {
     setPartnership(prev => {
       const emailToFind = partnerEmail || prev.partnerEmail;
-      const partnerUser = emailToFind ? users.find(u => u.email.toLowerCase() === emailToFind.toLowerCase()) : null;
+      const partnerUser = emailToFind ? todosUsuarios.find(u => u.email.toLowerCase() === emailToFind.toLowerCase()) : null;
       return {
         ...prev,
         status,
@@ -848,12 +880,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (token.trim().length >= 4) {
       const inviterId = (partnership.user1Id && partnership.user1Id !== currentUser.id)
         ? partnership.user1Id
-        : (partnership.partnerEmail ? users.find(u => u.email.toLowerCase() === partnership.partnerEmail?.toLowerCase())?.id : undefined)
+        : (partnership.partnerEmail ? todosUsuarios.find(u => u.email.toLowerCase() === partnership.partnerEmail?.toLowerCase())?.id : undefined)
         || partnership.user1Id
-        || users.find(u => u.id !== currentUser.id)?.id
+        || todosUsuarios.find(u => u.id !== currentUser.id)?.id
         || currentUser.id;
 
-      const inviterUser = users.find(u => u.id === inviterId);
+      const inviterUser = todosUsuarios.find(u => u.id === inviterId);
 
       setPartnership(prev => ({
         id: prev.id || `part-${Date.now()}`,
@@ -926,11 +958,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         recuperarSenha,
         currentUser,
         partner,
-        // Durante a transição convivem os perfis reais (do Postgres) e os
-        // usuários de demonstração, porque os lançamentos ainda são mock e
-        // referenciam ids como 'user-lucas'. A fase seguinte, que move os
-        // dados para o banco, elimina a segunda metade desta lista.
-        users: [...perfis, ...users.filter(m => !perfis.some(p => p.id === m.id))],
+        users: todosUsuarios,
         activeTab,
         setActiveTab,
         theme,
