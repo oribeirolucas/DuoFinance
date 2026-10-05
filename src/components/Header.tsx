@@ -70,16 +70,11 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenExpenseModal,
   onOpenIncomeModal
 }) => {
-  const { activeTab, currentUser, partner, resetToDefaultData, theme, toggleTheme } = useApp();
+  const { activeTab, currentUser, partner, theme, toggleTheme } = useApp();
   const info = TAB_TITLES[activeTab] || { title: 'Duo Finance', subtitle: '' };
 
   const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
 
-  const handleResetDemo = () => {
-    if (window.confirm('Isso vai apagar todos os seus dados atuais e restaurar os dados de exemplo. Deseja continuar?')) {
-      resetToDefaultData();
-    }
-  };
 
   return (
     <header className="sticky top-0 z-30 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800 px-4 lg:px-8 py-4 transition-colors">
@@ -117,18 +112,6 @@ export const Header: React.FC<HeaderProps> = ({
               <Moon className="w-4 h-4 text-slate-600" />
             )}
           </button>
-
-          {/* Quick Demo Reset Data */}
-          {isDemoMode && (
-            <button
-              onClick={handleResetDemo}
-              title="Restaurar Dados Fictícios de Exemplo"
-              className="p-2 text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded-xl transition-colors text-xs font-medium flex items-center gap-1.5"
-            >
-              <RotateCcw className="w-4 h-4" />
-              <span className="hidden xl:inline">Restaurar Exemplo</span>
-            </button>
-          )}
 
           {/* New Income Button */}
           <button

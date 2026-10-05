@@ -80,7 +80,7 @@ export const FinancialGoalsView: React.FC = () => {
     const currVal = Number(valorAtual) || 0;
 
     if (editingGoal) {
-      updateFinancialGoal({
+      updateFinancialGoal(editingGoal.id, {
         ...editingGoal,
         nome,
         descricao,
@@ -116,7 +116,7 @@ export const FinancialGoalsView: React.FC = () => {
     const addition = Number(contributionValue);
     const newCurrent = contributingGoal.valorAtual + addition;
 
-    updateFinancialGoal({
+    updateFinancialGoal(contributingGoal.id, {
       ...contributingGoal,
       valorAtual: newCurrent,
       status: newCurrent >= contributingGoal.valorAlvo ? 'concluida' : 'em_andamento'

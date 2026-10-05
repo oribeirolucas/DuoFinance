@@ -15,19 +15,13 @@ import {
   ExpenseCategory,
   IncomeRecurrenceConfig
 } from '../types';
-import {
-  mockUsers,
-  mockExpenses,
-  mockIncomes,
-  mockMonthlyGoals,
-  mockFinancialGoals,
-  mockDebts,
-  mockBudgets,
-  mockPartnership,
-  mockSubscription,
-  mockIncomeRecurrenceConfigs
-} from '../data/initialData';
 import { avatarDeIniciais } from '../utils/avatar';
+import {
+  paraExpense, deExpense, paraIncome, deIncome,
+  paraRecorrencia, deRecorrencia, paraMonthlyGoal, deMonthlyGoal,
+  paraFinancialGoal, deFinancialGoal, paraDebt, deDebt,
+  paraBudget, deBudget, paraSubscription
+} from '../lib/mappers';
 import { supabase, supabaseConfigurado } from '../lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 
@@ -42,6 +36,8 @@ interface AppContextType {
   isAuthenticated: boolean;
   /** true até a sessão existente ser resolvida; evita piscar a tela de login. */
   authLoading: boolean;
+  /** true enquanto os dados do household chegam do banco. */
+  carregandoDados: boolean;
   authScreen: AuthScreen;
   setAuthScreen: (screen: AuthScreen) => void;
   login: (email: string, password: string) => Promise<boolean>;
@@ -103,7 +99,10 @@ interface AppContextType {
   deleteMonthlyGoal: (id: string) => void;
   addGoalContribution: (goalId: string, amount: number) => void;
 
-  addFinancialGoal: (goal: Omit<FinancialGoal, 'id' | 'valorAtual' | 'status'>) => void;
+  addFinancialGoal: (
+    goal: Omit<FinancialGoal, 'id' | 'valorAtual' | 'status'>
+      & { valorAtual?: number; status?: FinancialGoal['status'] }
+  ) => void;
   updateFinancialGoal: (id: string, goal: Partial<FinancialGoal>) => void;
   deleteFinancialGoal: (id: string) => void;
   addFinancialGoalContribution: (goalId: string, amount: number) => void;
@@ -125,7 +124,6 @@ interface AppContextType {
   // Helpers & Toast
   toasts: ToastState[];
   showToast: (message: string, type?: 'success' | 'info' | 'error') => void;
-  resetToDefaultData: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -191,75 +189,65 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, [theme]);
 
   // Core Data
-  const [users, setUsers] = useState<User[]>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_users`);
-    return saved ? JSON.parse(saved) : mockUsers;
+  // Os dados vivem no Postgres. Estes estados são apenas a cópia local que a
+  // interface renderiza; a hidratação acontece no efeito logo abaixo, depois
+  // que existe sessão, e cada escrita vai ao banco. Antes disto o localStorage
+  // era a base de dados — o que o parecer resume como "o cliente nunca é fonte
+  // de verdade".
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [incomes, setIncomes] = useState<Income[]>([]);
+  const [monthlyGoals, setMonthlyGoals] = useState<MonthlyGoal[]>([]);
+  const [financialGoals, setFinancialGoals] = useState<FinancialGoal[]>([]);
+  const [debts, setDebts] = useState<Debt[]>([]);
+  const [budgets, setBudgets] = useState<CategoryBudget[]>([]);
+  const [incomeRecurrenceConfigs, setIncomeRecurrenceConfigs] = useState<IncomeRecurrenceConfig[]>([]);
+  const [partnership, setPartnership] = useState<Partnership>({
+    id: '', user1Id: '', status: 'none', inviteToken: ''
   });
-
-  const [expenses, setExpenses] = useState<Expense[]>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_expenses`);
-    return saved ? JSON.parse(saved) : mockExpenses;
+  const [subscription, setSubscription] = useState<Subscription>({
+    userId: '', plano: 'free', status: 'active'
   });
+  const [householdId, setHouseholdId] = useState<string>('');
+  const [carregandoDados, setCarregandoDados] = useState(true);
 
-  const [incomes, setIncomes] = useState<Income[]>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_incomes`);
-    return saved ? JSON.parse(saved) : mockIncomes;
-  });
+  const [divisionRule, setDivisionRuleEstado] = useState<DivisionRule>('proportional');
 
-  const [monthlyGoals, setMonthlyGoals] = useState<MonthlyGoal[]>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_mgoals`);
-    return saved ? JSON.parse(saved) : mockMonthlyGoals;
-  });
-
-  const [financialGoals, setFinancialGoals] = useState<FinancialGoal[]>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_fgoals`);
-    return saved ? JSON.parse(saved) : mockFinancialGoals;
-  });
-
-  const [debts, setDebts] = useState<Debt[]>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_debts`);
-    return saved ? JSON.parse(saved) : mockDebts;
-  });
-
-  const [budgets, setBudgets] = useState<CategoryBudget[]>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_budgets`);
-    return saved ? JSON.parse(saved) : mockBudgets;
-  });
-
-  const [partnership, setPartnership] = useState<Partnership>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_partnership`);
-    return saved ? JSON.parse(saved) : mockPartnership;
-  });
-
-  const [subscription, setSubscription] = useState<Subscription>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_subscription`);
-    return saved ? JSON.parse(saved) : mockSubscription;
-  });
-
-  const [incomeRecurrenceConfigs, setIncomeRecurrenceConfigs] = useState<IncomeRecurrenceConfig[]>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_income_recurrence_configs`);
-    return saved ? JSON.parse(saved) : mockIncomeRecurrenceConfigs;
-  });
-
-  const [divisionRule, setDivisionRule] = useState<DivisionRule>('proportional');
+  // A regra de divisão era estado de tela, perdido a cada recarga e diferente
+  // para cada pessoa do casal. Agora é do household: os dois veem a mesma.
+  const setDivisionRule = (regra: DivisionRule) => {
+    const anterior = divisionRule;
+    if (!householdId) { setDivisionRuleEstado(regra); return; }
+    gravar(
+      () => { setDivisionRuleEstado(regra); return () => setDivisionRuleEstado(anterior); },
+      () => supabase.from('households').update({ divisao_regra: regra }).eq('id', householdId)
+    );
+  };
   const [toasts, setToasts] = useState<ToastState[]>([]);
 
-  // Persist to localStorage
-  // A sessão NÃO entra aqui: quem a guarda é o cliente Supabase, sob chave
-  // própria, como token de curta duração. Os dados abaixo saem na fase
-  // seguinte, quando a leitura passar a vir do Postgres.
-  useEffect(() => {
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_users`, JSON.stringify(users));
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_expenses`, JSON.stringify(expenses));
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_incomes`, JSON.stringify(incomes));
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_mgoals`, JSON.stringify(monthlyGoals));
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_fgoals`, JSON.stringify(financialGoals));
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_debts`, JSON.stringify(debts));
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_budgets`, JSON.stringify(budgets));
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_partnership`, JSON.stringify(partnership));
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_subscription`, JSON.stringify(subscription));
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_income_recurrence_configs`, JSON.stringify(incomeRecurrenceConfigs));
-  }, [users, expenses, incomes, monthlyGoals, financialGoals, debts, budgets, partnership, subscription, incomeRecurrenceConfigs]);
+  /**
+   * Escrita otimista com desfazer.
+   *
+   * O contexto expõe ~60 funções síncronas que 14 componentes chamam. Torná-las
+   * assíncronas obrigaria a tratar carregamento em cada um deles. Então a
+   * mudança aparece na tela no mesmo instante, a gravação segue em paralelo e,
+   * se o banco recusar, o estado volta ao que era e o erro aparece. Quem decide
+   * se a escrita vale continua sendo o servidor.
+   */
+  const gravar = (
+    aplicar: () => () => void,
+    escrever: () => PromiseLike<{ error: unknown }>,
+    mensagemOk?: string
+  ) => {
+    const desfazer = aplicar();
+    void Promise.resolve(escrever()).then(({ error }) => {
+      if (error) {
+        desfazer();
+        showToast('Não foi possível salvar. Tente novamente.', 'error');
+        return;
+      }
+      if (mensagemOk) showToast(mensagemOk);
+    });
+  };
 
   const showToast = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
     const id = Math.random().toString(36).substring(2, 9);
@@ -291,13 +279,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     let cancelado = false;
     supabase
       .from('profiles')
-      .select('id, nome, email, avatar, salario, cor_avatar')
+      .select('id, nome, email, avatar, salario, cor_avatar, household_id')
       .then(({ data, error }) => {
         if (cancelado) return;
         if (error || !data) {
           showToast('Não foi possível carregar o perfil.', 'error');
+          setCarregandoDados(false);
           return;
         }
+        setHouseholdId(data.find(l => l.id === session.user.id)?.household_id ?? '');
         setPerfis(data.map(linha => ({
           id: linha.id,
           nome: linha.nome,
@@ -310,6 +300,73 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     return () => { cancelado = true; };
   }, [session?.user.id]);
+
+  // Carrega os dados do household. O RLS já restringe o que volta, então não
+  // há filtro por usuário na consulta: pedir "todas as despesas" devolve
+  // exatamente as do casal de quem está logado.
+  useEffect(() => {
+    if (!session) { setCarregandoDados(false); return; }
+    if (!householdId) return;
+
+    let cancelado = false;
+    setCarregandoDados(true);
+
+    Promise.all([
+      supabase.from('expenses').select('*').order('data', { ascending: false }),
+      supabase.from('incomes').select('*').order('data', { ascending: false }),
+      supabase.from('income_recurrence_configs').select('*'),
+      supabase.from('monthly_goals').select('*'),
+      supabase.from('financial_goals').select('*'),
+      supabase.from('debts').select('*'),
+      supabase.from('category_budgets').select('*'),
+      supabase.from('subscriptions').select('*').eq('user_id', session.user.id).maybeSingle(),
+      supabase.from('households').select('divisao_regra').eq('id', householdId).maybeSingle(),
+      supabase.from('household_members').select('user_id, papel'),
+    ]).then(([ex, inc, rec, mg, fg, dv, orc, assin, casa, membros]) => {
+      if (cancelado) return;
+
+      const falhou = [ex, inc, rec, mg, fg, dv, orc, assin, casa, membros].find(r => r.error);
+      if (falhou) {
+        showToast('Não foi possível carregar seus dados.', 'error');
+        setCarregandoDados(false);
+        return;
+      }
+
+      setExpenses((ex.data ?? []).map(paraExpense));
+      setIncomes((inc.data ?? []).map(paraIncome));
+      setIncomeRecurrenceConfigs((rec.data ?? []).map(paraRecorrencia));
+      setMonthlyGoals((mg.data ?? []).map(paraMonthlyGoal));
+      setFinancialGoals((fg.data ?? []).map(paraFinancialGoal));
+      setDebts((dv.data ?? []).map(paraDebt));
+      setBudgets((orc.data ?? []).map(paraBudget));
+      if (assin.data) setSubscription(paraSubscription(assin.data));
+      if (casa.data?.divisao_regra) setDivisionRuleEstado(casa.data.divisao_regra as DivisionRule);
+
+      // A parceria deixa de ser um objeto guardado e passa a ser derivada de
+      // quem está no household. Antes ela vinha do localStorage, onde podia
+      // dizer qualquer coisa; agora reflete a associação real no banco, que é
+      // a mesma que o RLS consulta para decidir o que cada um enxerga.
+      const linhasMembros = membros.data ?? [];
+      const dono = linhasMembros.find(m => m.papel === 'owner')?.user_id ?? session.user.id;
+      const outro = linhasMembros.find(m => m.user_id !== dono)?.user_id;
+      setPartnership({
+        id: householdId,
+        user1Id: dono,
+        user2Id: outro,
+        status: linhasMembros.length >= 2 ? 'active' : 'none',
+        inviteToken: ''
+      });
+      setCarregandoDados(false);
+    }).catch(() => {
+      // Sem isto, uma consulta rejeitada deixaria a tela de carregamento presa
+      // para sempre, sem erro e sem app.
+      if (cancelado) return;
+      showToast('Não foi possível carregar seus dados.', 'error');
+      setCarregandoDados(false);
+    });
+
+    return () => { cancelado = true; };
+  }, [session?.user.id, householdId]);
 
   // Entre o login e a chegada do perfil há alguns quadros em que só se conhece
   // o e-mail. O avatar precisa ser preenchido mesmo aí: src="" faz o navegador
@@ -330,19 +387,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         })()
       : emptyUser);
 
-  /**
-   * Perfis reais somados aos de demonstração.
-   *
-   * Transitório: a identidade já é o uuid da sessão, mas os lançamentos ainda
-   * vivem no localStorage e referenciam ids como 'user-lucas'. Enquanto as
-   * duas coisas coexistem, toda busca por usuário precisa olhar as duas
-   * listas, senão nome de pagador, parceiro e salário aparecem vazios. A fase
-   * que move os dados para o Postgres remove esta mistura inteira.
-   */
-  const todosUsuarios: User[] = [
-    ...perfis,
-    ...users.filter(m => !perfis.some(p => p.id === m.id))
-  ];
+  // Os perfis do household são a lista completa de usuários visíveis: o RLS
+  // não deixa consultar mais do que isso.
+  const todosUsuarios: User[] = perfis;
 
   const partner: User | null = (() => {
     if (!isAuthenticated) return null;
@@ -466,33 +513,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     // Perfil real: grava no banco pela função que valida a associação ao
     // household (set_member_salario), e atualiza a cópia local.
-    if (perfis.some(p => p.id === targetId)) {
-      setPerfis(prev => prev.map(p => (p.id === targetId ? { ...p, salario: novoValor } : p)));
-      void supabase.rpc('set_member_salario', { p_user: targetId, p_valor: novoValor })
-        .then(({ error }) => {
-          if (error) showToast('Não foi possível salvar o salário.', 'error');
-        });
-      return;
-    }
-
-    // Usuário de demonstração, ainda em memória.
-    setUsers(prevUsers =>
-      prevUsers.map(u => (u.id === targetId ? { ...u, salario: novoValor } : u))
+    const anterior = perfis;
+    gravar(
+      () => { setPerfis(prev => prev.map(p => (p.id === targetId ? { ...p, salario: novoValor } : p)));
+              return () => setPerfis(anterior); },
+      () => supabase.rpc('set_member_salario', { p_user: targetId, p_valor: novoValor })
     );
   };
 
   /**
-   * Transitório, pelo mesmo motivo de todosUsuarios: os lançamentos ainda são
-   * os de demonstração, cujos donos são 'user-lucas' e 'user-marina'. Sem
-   * incluí-los, toda tela de dados fica vazia depois de um login real — o app
-   * pareceria quebrado. Some junto com a migração dos dados.
+   * Continua existindo como conveniência para as telas, mas deixou de ser
+   * fronteira de segurança: o que chega aqui já veio filtrado pelo RLS, que
+   * não entrega linha de outro household por mais que o cliente peça. Filtrar
+   * de novo no front é só para agrupar por pessoa dentro do casal.
    */
-  const idsDemo = users.filter(u => !perfis.some(p => p.id === u.id)).map(u => u.id);
-
   const getHouseholdUserIds = (): string[] => {
     if (!currentUser || !currentUser.id) return [];
-    const base = partner && partner.id ? [currentUser.id, partner.id] : [currentUser.id];
-    return [...base, ...idsDemo];
+    return partner && partner.id ? [currentUser.id, partner.id] : [currentUser.id];
   };
 
   const householdUserIds = getHouseholdUserIds();
@@ -615,6 +652,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const logout = async () => {
     await supabase.auth.signOut();
+    // Sem limpar, um segundo login na mesma aba renderiza os dados da conta
+    // anterior até a nova carga chegar.
+    setExpenses([]); setIncomes([]); setMonthlyGoals([]); setFinancialGoals([]);
+    setDebts([]); setBudgets([]); setIncomeRecurrenceConfigs([]); setPerfis([]);
+    setHouseholdId('');
     setAuthScreen('login');
     showToast('Sessão encerrada com sucesso.', 'info');
   };
@@ -639,55 +681,79 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // CRUD EXPENSES
   const addExpense = (newExp: Omit<Expense, 'id'>) => {
-    const created: Expense = {
-      registradoPor: currentUser.id,
-      ...newExp,
-      id: `exp-${Date.now()}`
-    };
-    setExpenses(prev => [created, ...prev]);
-    showToast('Despesa registrada com sucesso!');
+    // Id gerado no cliente: assim a linha otimista já nasce com o id final, e
+    // um update ou um desfazer logo em seguida não erram o alvo.
+    const created: Expense = { registradoPor: currentUser.id, ...newExp, id: crypto.randomUUID() };
+    gravar(
+      () => { setExpenses(prev => [created, ...prev]);
+              return () => setExpenses(prev => prev.filter(e => e.id !== created.id)); },
+      () => supabase.from('expenses').insert(deExpense(created, householdId)),
+      'Despesa registrada com sucesso!'
+    );
   };
 
   const updateExpense = (id: string, data: Partial<Expense>) => {
-    setExpenses(prev => prev.map(e => e.id === id ? { ...e, ...data } : e));
-    showToast('Despesa atualizada!');
+    const anterior = expenses.find(e => e.id === id);
+    gravar(
+      () => { setExpenses(prev => prev.map(e => e.id === id ? { ...e, ...data } : e));
+              return () => setExpenses(prev => prev.map(e => e.id === id && anterior ? anterior : e)); },
+      () => supabase.from('expenses').update(deExpense(data)).eq('id', id),
+      'Despesa atualizada!'
+    );
   };
 
   const deleteExpense = (id: string) => {
-    setExpenses(prev => prev.filter(e => e.id !== id));
-    showToast('Despesa removida', 'info');
+    const indice = expenses.findIndex(e => e.id === id);
+    const removida = expenses[indice];
+    gravar(
+      () => { setExpenses(prev => prev.filter(e => e.id !== id));
+              return () => setExpenses(prev => { if (!removida) return prev;
+                const prox = [...prev]; prox.splice(Math.max(0, indice), 0, removida); return prox; }); },
+      () => supabase.from('expenses').delete().eq('id', id)
+    );
   };
 
   const toggleExpensePaid = (id: string) => {
-    setExpenses(prev => prev.map(e => {
-      if (e.id === id) {
-        const nextPaid = !e.pago;
-        showToast(nextPaid ? 'Despesa marcada como Paga! ✓' : 'Despesa marcada como Pendente', 'info');
-        return { ...e, pago: nextPaid };
-      }
-      return e;
-    }));
+    const alvo = expenses.find(e => e.id === id);
+    if (!alvo) return;
+    const pago = !alvo.pago;
+    gravar(
+      () => { setExpenses(prev => prev.map(e => e.id === id ? { ...e, pago } : e));
+              return () => setExpenses(prev => prev.map(e => e.id === id ? { ...e, pago: !pago } : e)); },
+      () => supabase.from('expenses').update({ pago }).eq('id', id)
+    );
   };
 
   // CRUD INCOMES
   const addIncome = (newInc: Omit<Income, 'id'>) => {
-    const created: Income = {
-      registradoPor: currentUser.id,
-      ...newInc,
-      id: `inc-${Date.now()}`
-    };
-    setIncomes(prev => [created, ...prev]);
-    showToast('Receita adicionada com sucesso! 💰');
+    const created: Income = { registradoPor: currentUser.id, ...newInc, id: crypto.randomUUID() };
+    gravar(
+      () => { setIncomes(prev => [created, ...prev]);
+              return () => setIncomes(prev => prev.filter(i => i.id !== created.id)); },
+      () => supabase.from('incomes').insert(deIncome(created, householdId)),
+      'Receita adicionada com sucesso! 💰'
+    );
   };
 
   const updateIncome = (id: string, data: Partial<Income>) => {
-    setIncomes(prev => prev.map(i => i.id === id ? { ...i, ...data } : i));
-    showToast('Receita atualizada!');
+    const anterior = incomes.find(i => i.id === id);
+    gravar(
+      () => { setIncomes(prev => prev.map(i => i.id === id ? { ...i, ...data } : i));
+              return () => setIncomes(prev => prev.map(i => i.id === id && anterior ? anterior : i)); },
+      () => supabase.from('incomes').update(deIncome(data)).eq('id', id),
+      'Receita atualizada!'
+    );
   };
 
   const deleteIncome = (id: string) => {
-    setIncomes(prev => prev.filter(i => i.id !== id));
-    showToast('Receita removida', 'info');
+    const indice = incomes.findIndex(i => i.id === id);
+    const removida = incomes[indice];
+    gravar(
+      () => { setIncomes(prev => prev.filter(i => i.id !== id));
+              return () => setIncomes(prev => { if (!removida) return prev;
+                const prox = [...prev]; prox.splice(Math.max(0, indice), 0, removida); return prox; }); },
+      () => supabase.from('incomes').delete().eq('id', id)
+    );
   };
 
   // INCOME RECURRENCE CONFIGS
@@ -697,16 +763,26 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const saveIncomeRecurrenceConfig = (config: IncomeRecurrenceConfig) => {
-    setIncomeRecurrenceConfigs(prev => {
-      const index = prev.findIndex(c => c.donoId === config.donoId && c.tipo === config.tipo);
-      if (index >= 0) {
-        const next = [...prev];
-        next[index] = config;
-        return next;
-      }
-      return [...prev, config];
-    });
-    showToast('Configuração de recorrência salva!', 'success');
+    const anterior = incomeRecurrenceConfigs;
+    // A tabela tem unique (dono_id, tipo): upsert por essa chave evita criar
+    // uma segunda configuração do mesmo tipo para a mesma pessoa.
+    // A tela monta ids legíveis como "irc-<usuario>-salario", que não cabem
+    // numa coluna uuid. O id real vem da linha já gravada, ou é novo.
+    const existente = incomeRecurrenceConfigs.find(c => c.donoId === config.donoId && c.tipo === config.tipo);
+    const comId = { ...config, id: existente?.id ?? crypto.randomUUID() };
+    gravar(
+      () => {
+        setIncomeRecurrenceConfigs(prev => {
+          const i = prev.findIndex(c => c.donoId === comId.donoId && c.tipo === comId.tipo);
+          if (i >= 0) { const prox = [...prev]; prox[i] = comId; return prox; }
+          return [...prev, comId];
+        });
+        return () => setIncomeRecurrenceConfigs(anterior);
+      },
+      () => supabase.from('income_recurrence_configs')
+        .upsert(deRecorrencia(comId, householdId), { onConflict: 'dono_id,tipo' }),
+      'Configuração de recorrência salva!'
+    );
   };
 
   const syncRecurrentIncomesForUser = (userId: string, year?: number, overrideSalary?: number) => {
@@ -786,163 +862,226 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     });
 
-    setIncomes(prev => {
-      const yearPrefix = `${targetYear}-`;
-      const nonRecurrentOrOtherUser = prev.filter(i => {
-        if (i.registradoPor !== userId) return true;
-        if (!i.data.startsWith(yearPrefix)) return true;
-        return i.tipo === 'renda_extra' || !i.tipo;
-      });
+    const novasReceitas: Income[] = generatedIncomes.map(inc => ({ ...inc, id: crypto.randomUUID() }));
+    const prefixoAno = `${targetYear}-`;
+    const anterior = incomes;
 
-      const newIncomesList: Income[] = generatedIncomes.map((inc, idx) => ({
-        ...inc,
-        id: `inc-rec-${userId}-${targetYear}-${inc.tipo}-${idx}-${Date.now()}`
-      }));
-
-      return [...newIncomesList, ...nonRecurrentOrOtherUser];
+    const mantidas = incomes.filter(i => {
+      if (i.registradoPor !== userId) return true;
+      if (!i.data.startsWith(prefixoAno)) return true;
+      return i.tipo === 'renda_extra' || !i.tipo;
     });
 
-    showToast(`Receitas recorrentes sincronizadas para ${userToSync.nome}! 💰`, 'success');
+    // Apaga e regera o ano inteiro em duas chamadas, não ~16 escritas soltas.
+    // A operação é idempotente — rodar de novo converge para o mesmo estado —
+    // então, se a segunda etapa falhar, repetir resolve. O guarda abaixo evita
+    // o caso ruim: inserir sem ter apagado, que duplicaria o ano.
+    setIncomes([...novasReceitas, ...mantidas]);
+
+    void supabase.from('incomes').delete()
+      .eq('registrado_por', userId)
+      .in('tipo', ['salario', 'ferias', 'decimo_terceiro'])
+      .gte('data', `${targetYear}-01-01`)
+      .lte('data', `${targetYear}-12-31`)
+      .then(({ error }) => {
+        if (error) {
+          setIncomes(anterior);
+          showToast('Não foi possível sincronizar as receitas.', 'error');
+          return;
+        }
+        return supabase.from('incomes')
+          .insert(novasReceitas.map(i => deIncome(i, householdId)))
+          .then(({ error: erroInsert }) => {
+            if (erroInsert) {
+              // A exclusão já foi confirmada pelo banco. Voltar ao estado
+              // anterior exibiria um ano de receitas que não existem mais —
+              // pior que mostrar o vazio real. A tela passa a refletir o que
+              // de fato está gravado, e a mensagem pede a repetição, que é
+              // segura: a operação converge para o mesmo resultado.
+              setIncomes(mantidas);
+              showToast('As receitas foram limpas, mas não recriadas. Sincronize novamente.', 'error');
+              return;
+            }
+            showToast(`Receitas recorrentes sincronizadas para ${userToSync.nome}! 💰`, 'success');
+          });
+      });
   };
 
   // MONTHLY GOALS
   const addMonthlyGoal = (goal: Omit<MonthlyGoal, 'id' | 'valorAtual' | 'status'>) => {
     const created: MonthlyGoal = {
-      donoId: currentUser.id,
-      ...goal,
-      id: `mgoal-${Date.now()}`,
-      valorAtual: 0,
-      status: 'em_andamento'
+      donoId: currentUser.id, ...goal, id: crypto.randomUUID(),
+      valorAtual: 0, status: 'em_andamento'
     };
-    setMonthlyGoals(prev => [created, ...prev]);
-    showToast('Nova meta de economia criada! 🎯');
+    gravar(
+      () => { setMonthlyGoals(prev => [created, ...prev]);
+              return () => setMonthlyGoals(prev => prev.filter(g => g.id !== created.id)); },
+      () => supabase.from('monthly_goals').insert(deMonthlyGoal(created, householdId)),
+      'Nova meta de economia criada! 🎯'
+    );
   };
 
   const updateMonthlyGoal = (id: string, data: Partial<MonthlyGoal>) => {
-    setMonthlyGoals(prev => prev.map(g => g.id === id ? { ...g, ...data } : g));
-    showToast('Meta atualizada!');
+    const anterior = monthlyGoals.find(g => g.id === id);
+    gravar(
+      () => { setMonthlyGoals(prev => prev.map(g => g.id === id ? { ...g, ...data } : g));
+              return () => setMonthlyGoals(prev => prev.map(g => g.id === id && anterior ? anterior : g)); },
+      () => supabase.from('monthly_goals').update(deMonthlyGoal(data)).eq('id', id),
+      'Meta atualizada!'
+    );
   };
 
   const deleteMonthlyGoal = (id: string) => {
-    setMonthlyGoals(prev => prev.filter(g => g.id !== id));
-    showToast('Meta excluída', 'info');
+    const indice = monthlyGoals.findIndex(g => g.id === id);
+    const removida = monthlyGoals[indice];
+    gravar(
+      () => { setMonthlyGoals(prev => prev.filter(g => g.id !== id));
+              return () => setMonthlyGoals(prev => { if (!removida) return prev;
+                const prox = [...prev]; prox.splice(Math.max(0, indice), 0, removida); return prox; }); },
+      () => supabase.from('monthly_goals').delete().eq('id', id)
+    );
   };
 
   const addGoalContribution = (goalId: string, amount: number) => {
-    setMonthlyGoals(prev => prev.map(g => {
-      if (g.id === goalId) {
-        const nextVal = g.valorAtual + amount;
-        const isDone = nextVal >= g.valorAlvo;
-        if (isDone) {
-          showToast(`Parabéns! Meta "${g.nome}" concluída com sucesso! 🎉`, 'success');
-        } else {
-          showToast(`Aporte de R$ ${amount.toFixed(2)} adicionado à meta!`, 'success');
-        }
-        return {
-          ...g,
-          valorAtual: nextVal,
-          status: isDone ? 'concluida' : 'em_andamento'
-        };
-      }
-      return g;
-    }));
+    const alvo = monthlyGoals.find(g => g.id === goalId);
+    if (!alvo) return;
+    const valorAtual = alvo.valorAtual + amount;
+    const concluida = valorAtual >= alvo.valorAlvo;
+    const status: MonthlyGoal['status'] = concluida ? 'concluida' : 'em_andamento';
+    gravar(
+      () => { setMonthlyGoals(prev => prev.map(g => g.id === goalId ? { ...g, valorAtual, status } : g));
+              return () => setMonthlyGoals(prev => prev.map(g => g.id === goalId ? alvo : g)); },
+      () => supabase.from('monthly_goals').update({ valor_atual: valorAtual, status }).eq('id', goalId),
+      concluida
+        ? `Parabéns! Meta "${alvo.nome}" concluída com sucesso! 🎉`
+        : `Aporte de R$ ${amount.toFixed(2)} adicionado à meta!`
+    );
   };
 
   // FINANCIAL GOALS (LONG TERM)
-  const addFinancialGoal = (goal: Omit<FinancialGoal, 'id' | 'valorAtual' | 'status'>) => {
+  const addFinancialGoal = (
+    goal: Omit<FinancialGoal, 'id' | 'valorAtual' | 'status'>
+      & { valorAtual?: number; status?: FinancialGoal['status'] }
+  ) => {
+    // O formulário tem campo de valor já guardado. Antes ele era descartado em
+    // silêncio, porque os padrões vinham depois do espalhamento.
     const created: FinancialGoal = {
       donoId: currentUser.id,
       ...goal,
-      id: `fgoal-${Date.now()}`,
-      valorAtual: 0,
-      status: 'em_andamento'
+      id: crypto.randomUUID(),
+      valorAtual: goal.valorAtual ?? 0,
+      status: goal.status ?? 'em_andamento'
     };
-    setFinancialGoals(prev => [created, ...prev]);
-    showToast('Sonho adicionado! Que the planejamento comece 🚀');
+    gravar(
+      () => { setFinancialGoals(prev => [created, ...prev]);
+              return () => setFinancialGoals(prev => prev.filter(f => f.id !== created.id)); },
+      () => supabase.from('financial_goals').insert(deFinancialGoal(created, householdId)),
+      'Sonho adicionado! Que o planejamento comece 🚀'
+    );
   };
 
   const updateFinancialGoal = (id: string, data: Partial<FinancialGoal>) => {
-    setFinancialGoals(prev => prev.map(f => f.id === id ? { ...f, ...data } : f));
-    showToast('Meta de longo prazo atualizada!');
+    const anterior = financialGoals.find(f => f.id === id);
+    gravar(
+      () => { setFinancialGoals(prev => prev.map(f => f.id === id ? { ...f, ...data } : f));
+              return () => setFinancialGoals(prev => prev.map(f => f.id === id && anterior ? anterior : f)); },
+      () => supabase.from('financial_goals').update(deFinancialGoal(data)).eq('id', id),
+      'Meta de longo prazo atualizada!'
+    );
   };
 
   const deleteFinancialGoal = (id: string) => {
-    setFinancialGoals(prev => prev.filter(f => f.id !== id));
-    showToast('Objetivo removido', 'info');
+    const indice = financialGoals.findIndex(f => f.id === id);
+    const removida = financialGoals[indice];
+    gravar(
+      () => { setFinancialGoals(prev => prev.filter(f => f.id !== id));
+              return () => setFinancialGoals(prev => { if (!removida) return prev;
+                const prox = [...prev]; prox.splice(Math.max(0, indice), 0, removida); return prox; }); },
+      () => supabase.from('financial_goals').delete().eq('id', id)
+    );
   };
 
   const addFinancialGoalContribution = (goalId: string, amount: number) => {
-    setFinancialGoals(prev => prev.map(f => {
-      if (f.id === goalId) {
-        const nextVal = f.valorAtual + amount;
-        const isDone = nextVal >= f.valorAlvo;
-        if (isDone) {
-          showToast(`Incrível! Vocês atingiram o objetivo "${f.nome}"! 🥂💜`, 'success');
-        } else {
-          showToast(`R$ ${amount.toFixed(2)} depositados para "${f.nome}"!`, 'success');
-        }
-        return {
-          ...f,
-          valorAtual: nextVal,
-          status: isDone ? 'concluida' : 'em_andamento'
-        };
-      }
-      return f;
-    }));
+    const alvo = financialGoals.find(f => f.id === goalId);
+    if (!alvo) return;
+    const valorAtual = alvo.valorAtual + amount;
+    const concluida = valorAtual >= alvo.valorAlvo;
+    const status: FinancialGoal['status'] = concluida ? 'concluida' : 'em_andamento';
+    gravar(
+      () => { setFinancialGoals(prev => prev.map(f => f.id === goalId ? { ...f, valorAtual, status } : f));
+              return () => setFinancialGoals(prev => prev.map(f => f.id === goalId ? alvo : f)); },
+      () => supabase.from('financial_goals').update({ valor_atual: valorAtual, status }).eq('id', goalId),
+      concluida
+        ? `Incrível! Vocês atingiram o objetivo "${alvo.nome}"! 🥂💜`
+        : `R$ ${amount.toFixed(2)} depositados para "${alvo.nome}"!`
+    );
   };
 
   // DEBTS
   const addDebt = (debt: Omit<Debt, 'id'>) => {
-    const created: Debt = {
-      registradoPor: currentUser.id,
-      ...debt,
-      id: `debt-${Date.now()}`
-    };
-    setDebts(prev => [created, ...prev]);
-    showToast('Dívida cadastrada com sucesso!');
+    const created: Debt = { registradoPor: currentUser.id, ...debt, id: crypto.randomUUID() };
+    gravar(
+      () => { setDebts(prev => [created, ...prev]);
+              return () => setDebts(prev => prev.filter(d => d.id !== created.id)); },
+      () => supabase.from('debts').insert(deDebt(created, householdId)),
+      'Dívida cadastrada com sucesso!'
+    );
   };
 
   const updateDebt = (id: string, data: Partial<Debt>) => {
-    setDebts(prev => prev.map(d => d.id === id ? { ...d, ...data } : d));
-    showToast('Dívida atualizada!');
+    const anterior = debts.find(d => d.id === id);
+    gravar(
+      () => { setDebts(prev => prev.map(d => d.id === id ? { ...d, ...data } : d));
+              return () => setDebts(prev => prev.map(d => d.id === id && anterior ? anterior : d)); },
+      () => supabase.from('debts').update(deDebt(data)).eq('id', id),
+      'Dívida atualizada!'
+    );
   };
 
   const deleteDebt = (id: string) => {
-    setDebts(prev => prev.filter(d => d.id !== id));
-    showToast('Dívida removida', 'info');
+    const indice = debts.findIndex(d => d.id === id);
+    const removida = debts[indice];
+    gravar(
+      () => { setDebts(prev => prev.filter(d => d.id !== id));
+              return () => setDebts(prev => { if (!removida) return prev;
+                const prox = [...prev]; prox.splice(Math.max(0, indice), 0, removida); return prox; }); },
+      () => supabase.from('debts').delete().eq('id', id)
+    );
   };
 
   const payDebtInstallment = (id: string, amount: number) => {
-    setDebts(prev => prev.map(d => {
-      if (d.id === id) {
-        const nextPaid = Math.min(d.valorTotal, d.valorPago + amount);
-        const fullyPaid = nextPaid >= d.valorTotal;
-        if (fullyPaid) {
-          showToast(`Uhuuul! Dívida "${d.nome}" quitada integralmente! 🥳`, 'success');
-        } else {
-          showToast(`Pagamento de R$ ${amount.toFixed(2)} registrado!`, 'success');
-        }
-        return {
-          ...d,
-          valorPago: nextPaid
-        };
-      }
-      return d;
-    }));
+    const alvo = debts.find(d => d.id === id);
+    if (!alvo) return;
+    // O banco recusa valor_pago acima do total; o clamp aqui evita o erro cru.
+    const valorPago = Math.min(alvo.valorTotal, alvo.valorPago + amount);
+    const quitada = valorPago >= alvo.valorTotal;
+    gravar(
+      () => { setDebts(prev => prev.map(d => d.id === id ? { ...d, valorPago } : d));
+              return () => setDebts(prev => prev.map(d => d.id === id ? alvo : d)); },
+      () => supabase.from('debts').update({ valor_pago: valorPago }).eq('id', id),
+      quitada
+        ? `Uhuuul! Dívida "${alvo.nome}" quitada integralmente! 🥳`
+        : `Pagamento de R$ ${amount.toFixed(2)} registrado!`
+    );
   };
 
   // BUDGET
   const updateBudget = (categoria: ExpenseCategory, limite: number) => {
-    setBudgets(prev => {
-      const activeOwnerId = currentUser.id;
-      const householdIds = getHouseholdUserIds();
-      const exists = prev.some(b => b.categoria === categoria && (!b.donoId || householdIds.includes(b.donoId)));
-      if (exists) {
-        return prev.map(b => (b.categoria === categoria && (!b.donoId || householdIds.includes(b.donoId))) ? { ...b, limite, donoId: b.donoId || activeOwnerId } : b);
-      }
-      return [...prev, { categoria, limite, donoId: activeOwnerId }];
-    });
-    showToast(`Orçamento de ${categoria} atualizado para R$ ${limite.toFixed(2)}`);
+    const anterior = budgets;
+    // A tabela tem unique (household_id, categoria): um orçamento por
+    // categoria por casal, que é o que a tela de fato mostra.
+    gravar(
+      () => {
+        setBudgets(prev => prev.some(b => b.categoria === categoria)
+          ? prev.map(b => b.categoria === categoria ? { ...b, limite, donoId: currentUser.id } : b)
+          : [...prev, { categoria, limite, donoId: currentUser.id }]);
+        return () => setBudgets(anterior);
+      },
+      () => supabase.from('category_budgets')
+        .upsert(deBudget({ categoria, limite, donoId: currentUser.id }, householdId),
+                { onConflict: 'household_id,categoria' }),
+      `Orçamento de ${categoria} atualizado para R$ ${limite.toFixed(2)}`
+    );
   };
 
   // PARTNERSHIP & SUBSCRIPTION
@@ -1034,24 +1173,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     showToast(`Plano alterado para ${plano.toUpperCase()}!`, 'info');
   };
 
-  const resetToDefaultData = () => {
-    setExpenses(mockExpenses);
-    setIncomes(mockIncomes);
-    setMonthlyGoals(mockMonthlyGoals);
-    setFinancialGoals(mockFinancialGoals);
-    setDebts(mockDebts);
-    setBudgets(mockBudgets);
-    setPartnership(mockPartnership);
-    setSubscription(mockSubscription);
-    setIncomeRecurrenceConfigs(mockIncomeRecurrenceConfigs);
-    showToast('Dados restaurados para os dados padrão de demonstração!', 'info');
-  };
-
   return (
     <AppContext.Provider
       value={{
         isAuthenticated,
         authLoading,
+        carregandoDados,
         authScreen,
         setAuthScreen,
         login,
@@ -1114,7 +1241,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setSubscriptionPlan,
         toasts,
         showToast,
-        resetToDefaultData
       }}
     >
       {children}
