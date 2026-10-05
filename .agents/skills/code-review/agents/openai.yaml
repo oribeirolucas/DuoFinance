@@ -1,0 +1,4 @@
+interface:
+  display_name: "Code Review"
+  short_description: "Revisa um PR ou branch local do DuoFinance com base em evidências"
+  default_prompt: "Use code-review para revisar o PR #<numero> (ou a branch atual), conferindo requisitos, arquitetura React/TS, segurança e os gates de verificação."
