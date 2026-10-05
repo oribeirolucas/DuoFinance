@@ -27,7 +27,9 @@ import {
   mockSubscription,
   mockIncomeRecurrenceConfigs
 } from '../data/initialData';
-import { hashPassword } from '../utils/hash';
+import { avatarDeIniciais } from '../utils/avatar';
+import { supabase, supabaseConfigurado } from '../lib/supabase';
+import type { Session } from '@supabase/supabase-js';
 
 interface ToastState {
   id: string;
@@ -38,18 +40,20 @@ interface ToastState {
 interface AppContextType {
   // Auth & Navigation
   isAuthenticated: boolean;
+  /** true até a sessão existente ser resolvida; evita piscar a tela de login. */
+  authLoading: boolean;
   authScreen: AuthScreen;
   setAuthScreen: (screen: AuthScreen) => void;
-  login: (email: string, password?: string) => boolean;
-  register: (nome: string, email: string, salario?: number, password?: string) => boolean;
-  signup: (nome: string, email: string, salario?: number, password?: string) => boolean;
-  logout: () => void;
-  
+  login: (email: string, password: string) => Promise<boolean>;
+  register: (nome: string, email: string, salario?: number, password?: string) => Promise<boolean>;
+  signup: (nome: string, email: string, salario?: number, password?: string) => Promise<boolean>;
+  logout: () => Promise<void>;
+  recuperarSenha: (email: string) => Promise<boolean>;
+
   // Users & Active Partner Context
   currentUser: User;
   partner: User | null;
   users: User[];
-  setCurrentUserId: (id: string) => void;
   getHouseholdUserIds: () => string[];
 
   // Active View Tab
@@ -123,15 +127,34 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 const LOCAL_STORAGE_KEY = 'duo_finance_v1_data';
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    const savedAuth = localStorage.getItem(`${LOCAL_STORAGE_KEY}_is_authenticated`);
-    return savedAuth === 'true';
-  });
+  // A sessão é a fonte da verdade da autenticação. Ela vem do Supabase, que
+  // valida o JWT no servidor — o localStorage deixa de decidir quem está
+  // logado, e o campo `_is_authenticated` some junto.
+  const [session, setSession] = useState<Session | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [authScreen, setAuthScreen] = useState<AuthScreen>('login');
-  const [currentUserId, setCurrentUserIdState] = useState<string>(() => {
-    const savedUserId = localStorage.getItem(`${LOCAL_STORAGE_KEY}_current_user_id`);
-    return savedUserId || '';
-  });
+
+  const isAuthenticated = session !== null;
+  const currentUserId = session?.user.id ?? '';
+
+  useEffect(() => {
+    if (!supabaseConfigurado) {
+      setAuthLoading(false);
+      return;
+    }
+
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setAuthLoading(false);
+    });
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_evento, novaSessao) => {
+      setSession(novaSessao);
+      setAuthLoading(false);
+    });
+
+    return () => sub.subscription.unsubscribe();
+  }, []);
   const [activeTab, setActiveTab] = useState<NavigationTab>('dashboard');
 
   // Theme State
@@ -214,9 +237,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [toasts, setToasts] = useState<ToastState[]>([]);
 
   // Persist to localStorage
+  // A sessão NÃO entra aqui: quem a guarda é o cliente Supabase, sob chave
+  // própria, como token de curta duração. Os dados abaixo saem na fase
+  // seguinte, quando a leitura passar a vir do Postgres.
   useEffect(() => {
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_is_authenticated`, String(isAuthenticated));
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_current_user_id`, currentUserId);
     localStorage.setItem(`${LOCAL_STORAGE_KEY}_users`, JSON.stringify(users));
     localStorage.setItem(`${LOCAL_STORAGE_KEY}_expenses`, JSON.stringify(expenses));
     localStorage.setItem(`${LOCAL_STORAGE_KEY}_incomes`, JSON.stringify(incomes));
@@ -227,7 +251,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     localStorage.setItem(`${LOCAL_STORAGE_KEY}_partnership`, JSON.stringify(partnership));
     localStorage.setItem(`${LOCAL_STORAGE_KEY}_subscription`, JSON.stringify(subscription));
     localStorage.setItem(`${LOCAL_STORAGE_KEY}_income_recurrence_configs`, JSON.stringify(incomeRecurrenceConfigs));
-  }, [isAuthenticated, currentUserId, users, expenses, incomes, monthlyGoals, financialGoals, debts, budgets, partnership, subscription, incomeRecurrenceConfigs]);
+  }, [users, expenses, incomes, monthlyGoals, financialGoals, debts, budgets, partnership, subscription, incomeRecurrenceConfigs]);
 
   const showToast = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
     const id = Math.random().toString(36).substring(2, 9);
@@ -246,9 +270,57 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     corAvatar: '#6C63FF'
   };
 
-  const currentUser: User = isAuthenticated
-    ? (users.find(u => u.id === currentUserId) || users[0] || emptyUser)
-    : emptyUser;
+  // Perfis do household, vindos do Postgres. O RLS garante que esta consulta
+  // só devolve quem divide o household — não há como pedir "todos os usuários".
+  const [perfis, setPerfis] = useState<User[]>([]);
+
+  useEffect(() => {
+    if (!session) {
+      setPerfis([]);
+      return;
+    }
+
+    let cancelado = false;
+    supabase
+      .from('profiles')
+      .select('id, nome, email, avatar, salario, cor_avatar')
+      .then(({ data, error }) => {
+        if (cancelado) return;
+        if (error || !data) {
+          showToast('Não foi possível carregar o perfil.', 'error');
+          return;
+        }
+        setPerfis(data.map(linha => ({
+          id: linha.id,
+          nome: linha.nome,
+          email: linha.email ?? '',
+          avatar: linha.avatar || avatarDeIniciais(linha.nome, linha.cor_avatar),
+          salario: Number(linha.salario) || 0,
+          corAvatar: linha.cor_avatar
+        })));
+      });
+
+    return () => { cancelado = true; };
+  }, [session?.user.id]);
+
+  // Entre o login e a chegada do perfil há alguns quadros em que só se conhece
+  // o e-mail. O avatar precisa ser preenchido mesmo aí: src="" faz o navegador
+  // rebaixar o documento inteiro.
+  const currentUser: User =
+    perfis.find(u => u.id === currentUserId)
+    ?? (isAuthenticated
+      ? (() => {
+          const email = session?.user.email ?? '';
+          const nome = email.split('@')[0] || 'Você';
+          return {
+            ...emptyUser,
+            id: currentUserId,
+            nome,
+            email,
+            avatar: avatarDeIniciais(nome, emptyUser.corAvatar)
+          };
+        })()
+      : emptyUser);
 
   const partner: User | null = (() => {
     if (!isAuthenticated) return null;
@@ -264,13 +336,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return null;
   })();
 
-  const setCurrentUserId = (id: string) => {
-    setCurrentUserIdState(id);
-    const targetUser = users.find(u => u.id === id);
-    if (targetUser) {
-      showToast(`Alternado para perfil: ${targetUser.nome}`, 'info');
-    }
-  };
+  // setCurrentUserId foi removido. Ele assumia a identidade de outra pessoa e
+  // carimbava o id dela em tudo que fosse criado depois. Com RLS no banco a
+  // troca não teria efeito nenhum sobre o que é visível, então manter o botão
+  // seria mentira de interface.
 
   const updateUserSalario = (novoValor: number, userId?: string) => {
     const targetId = userId || currentUser.id;
@@ -321,95 +390,116 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return householdUserIds.includes(id);
   });
 
-  const login = (email: string, password?: string): boolean => {
-    const cleanEmail = email.trim().toLowerCase();
-    const found = users.find(u => u.email.toLowerCase() === cleanEmail);
+  // A verificação de senha acontece no servidor, contra o hash bcrypt guardado
+  // em auth.users. O cliente nunca vê hash nenhum, e mensagem de erro não
+  // distingue "e-mail não existe" de "senha errada" — isso evita confirmar
+  // para um estranho quais e-mails têm conta.
+  const login = async (email: string, password: string): Promise<boolean> => {
+    if (!supabaseConfigurado) {
+      showToast('Aplicação sem backend configurado.', 'error');
+      return false;
+    }
 
-    if (!found) {
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
+      password
+    });
+
+    if (error) {
       showToast('E-mail ou senha incorretos', 'error');
       return false;
     }
 
-    const inputHash = hashPassword(password || '');
-    const userHash = found.senha || hashPassword('Demo123');
-
-    if (inputHash !== userHash) {
-      showToast('E-mail ou senha incorretos', 'error');
-      return false;
-    }
-
-    setCurrentUserIdState(found.id);
-    setIsAuthenticated(true);
-    showToast(`Bem-vindo(a) de volta, ${found.nome.split(' ')[0]}! 💜`, 'success');
+    showToast('Bem-vindo(a) de volta! 💜', 'success');
     return true;
   };
 
-  const signup = (nome: string, email: string, salario: number = 6500, password?: string): boolean => {
-    const cleanEmail = email.trim().toLowerCase();
-    const existing = users.find(u => u.email.toLowerCase() === cleanEmail);
-
-    const hashedPassword = password ? hashPassword(password) : hashPassword('Demo123');
-
-    if (existing) {
-      setUsers(prev => prev.map(u => u.id === existing.id ? {
-        ...u,
-        nome: nome || u.nome,
-        salario: Number(salario) || u.salario,
-        senha: hashedPassword
-      } : u));
-      setCurrentUserIdState(existing.id);
-      setIsAuthenticated(true);
-      showToast(`Bem-vindo(a) de volta, ${existing.nome.split(' ')[0]}! 💜`, 'success');
-      return true;
+  // E-mail já cadastrado passa a ser erro do servidor. Antes, o cadastro
+  // sobrescrevia o usuário existente e iniciava a sessão como ele — tomada de
+  // conta sem sequer pedir a senha.
+  const signup = async (
+    nome: string,
+    email: string,
+    salario: number = 6500,
+    password?: string
+  ): Promise<boolean> => {
+    if (!supabaseConfigurado) {
+      showToast('Aplicação sem backend configurado.', 'error');
+      return false;
+    }
+    if (!password) {
+      showToast('Informe uma senha para criar a conta.', 'error');
+      return false;
     }
 
-    const newId = `user-${Date.now()}`;
     const avatarList = [
       'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
       'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
       'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150&auto=format&fit=crop&q=80'
     ];
-    const avatar = avatarList[Math.floor(Math.random() * avatarList.length)];
 
-    const newUser: User = {
-      id: newId,
-      nome: nome.trim() || 'Novo Usuário',
-      email: email.trim(),
-      avatar,
-      salario: Number(salario) || 6500,
-      corAvatar: '#8B5CF6',
-      senha: hashedPassword
-    };
+    // Estes dados vão para raw_user_meta_data e são lidos pelo trigger
+    // handle_new_user, que cria household, perfil e associação numa transação.
+    const { data, error } = await supabase.auth.signUp({
+      email: email.trim().toLowerCase(),
+      password,
+      options: {
+        data: {
+          nome: nome.trim() || 'Novo Usuário',
+          salario: String(Number(salario) || 0),
+          cor_avatar: '#8B5CF6',
+          avatar: avatarList[Math.floor(Math.random() * avatarList.length)]
+        }
+      }
+    });
 
-    setUsers(prev => [...prev, newUser]);
-    setCurrentUserIdState(newId);
+    if (error) {
+      showToast(error.message || 'Não foi possível concluir o cadastro.', 'error');
+      return false;
+    }
 
-    // Initial income entry for salary
-    const initialIncome: Income = {
-      id: `inc-${Date.now()}`,
-      descricao: `Salário - ${newUser.nome}`,
-      valor: newUser.salario,
-      fonte: 'CLT / Trabalho',
-      registradoPor: newId,
-      data: new Date().toISOString().split('T')[0],
-      observacao: 'Renda mensal cadastrada no registro'
-    };
-    setIncomes(prev => [initialIncome, ...prev]);
+    // Com proteção contra enumeração ligada, cadastrar e-mail já existente
+    // "funciona" mas devolve identities vazio. Não é conta nova.
+    if (data.user && data.user.identities && data.user.identities.length === 0) {
+      showToast('Se esse e-mail ainda não tiver conta, enviaremos a confirmação.', 'info');
+      return false;
+    }
 
-    setIsAuthenticated(true);
-    showToast(`Conta criada com sucesso para ${newUser.nome}! 🚀`, 'success');
+    // Sem sessão imediata significa que o projeto exige confirmação por e-mail.
+    if (!data.session) {
+      showToast('Conta criada! Confirme o e-mail para entrar.', 'info');
+      return true;
+    }
+
+    showToast('Conta criada com sucesso! 🚀', 'success');
     return true;
   };
 
   const register = signup;
 
-  const logout = () => {
-    setIsAuthenticated(false);
-    setCurrentUserIdState('');
+  const logout = async () => {
+    await supabase.auth.signOut();
     setAuthScreen('login');
-    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_is_authenticated`);
-    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_current_user_id`);
     showToast('Sessão encerrada com sucesso.', 'info');
+  };
+
+  // Antes isto só exibia "E-mail enviado!" sem fazer nada.
+  const recuperarSenha = async (email: string): Promise<boolean> => {
+    if (!supabaseConfigurado) {
+      showToast('Aplicação sem backend configurado.', 'error');
+      return false;
+    }
+
+    const { error } = await supabase.auth.resetPasswordForEmail(
+      email.trim().toLowerCase(),
+      { redirectTo: `${window.location.origin}/` }
+    );
+
+    if (error) {
+      showToast('Não foi possível enviar o e-mail de redefinição.', 'error');
+      return false;
+    }
+    return true;
   };
 
   // CRUD EXPENSES
@@ -826,16 +916,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     <AppContext.Provider
       value={{
         isAuthenticated,
+        authLoading,
         authScreen,
         setAuthScreen,
         login,
         register,
         signup,
         logout,
+        recuperarSenha,
         currentUser,
         partner,
-        users,
-        setCurrentUserId,
+        // Durante a transição convivem os perfis reais (do Postgres) e os
+        // usuários de demonstração, porque os lançamentos ainda são mock e
+        // referenciam ids como 'user-lucas'. A fase seguinte, que move os
+        // dados para o banco, elimina a segunda metade desta lista.
+        users: [...perfis, ...users.filter(m => !perfis.some(p => p.id === m.id))],
         activeTab,
         setActiveTab,
         theme,
