@@ -14,8 +14,7 @@ export interface User {
   avatar: string;
   salario: number;
   corAvatar: string;
-  // Sem campo de senha, por princípio: a senha vive em auth.users, hasheada
-  // com bcrypt pelo servidor, e nunca chega ao cliente em forma alguma.
+  senha?: string; // Hashed password
 }
 
 export interface Expense {

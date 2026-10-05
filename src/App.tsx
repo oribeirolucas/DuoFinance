@@ -26,7 +26,7 @@ import { PartnerInviteModal } from './components/Modals/PartnerInviteModal';
 import { DebtModal } from './components/Modals/DebtModal';
 
 const MainLayout: React.FC = () => {
-  const { isAuthenticated, authLoading, activeTab } = useApp();
+  const { isAuthenticated, activeTab } = useApp();
 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<boolean>(() => {
@@ -47,17 +47,6 @@ const MainLayout: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('duo_finance_sidebar_collapsed', String(collapsed));
   }, [collapsed]);
-
-  // Enquanto a sessão existente não é resolvida, não decidimos nada: mostrar
-  // a tela de login aqui faria o app piscar o formulário a cada recarga de
-  // quem já está logado.
-  if (authLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F8F9FF] dark:bg-slate-950">
-        <div className="w-8 h-8 rounded-full border-2 border-purple-200 border-t-purple-600 animate-spin" />
-      </div>
-    );
-  }
 
   if (!isAuthenticated) {
     return <AuthView />;
