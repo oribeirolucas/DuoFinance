@@ -28,22 +28,11 @@ if (!supabaseConfigurado) {
  * A chave service_role nunca entra aqui, nem em qualquer arquivo que o Vite
  * empacote: ela ignora RLS por definição.
  */
-const opcoes = {
+export const supabase = createClient(url ?? '', publishableKey ?? '', {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
     storageKey: 'duo_finance_auth',
   },
-};
-
-/**
- * Sem configuração, o cliente é criado apontando para um endereço inerte.
- * `createClient('', '')` lança "supabaseUrl is required" já na avaliação do
- * módulo — ou seja, antes de qualquer guarda poder rodar — e a aplicação
- * inteira iria a tela branca. Com o cliente inerte, quem depende de sessão
- * checa `supabaseConfigurado` e o resto do app continua de pé.
- */
-export const supabase = supabaseConfigurado
-  ? createClient(url as string, publishableKey as string, opcoes)
-  : createClient('http://localhost:54321', 'sem-chave-configurada', opcoes);
+});
