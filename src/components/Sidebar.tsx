@@ -16,7 +16,8 @@ import {
   UserCheck,
   ChevronRight,
   ChevronLeft,
-  X
+  X,
+  Settings
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -45,6 +46,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'metas-financeiras', label: 'Metas Financeiras', icon: Rocket },
     { id: 'planilha', label: 'Planilha', icon: FileSpreadsheet },
     { id: 'parceiro', label: 'Meu Parceiro(a)', icon: Heart },
+    { id: 'configuracoes', label: 'Configurações', icon: Settings },
   ];
 
   const handleTabClick = (tab: NavigationTab) => {
