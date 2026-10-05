@@ -38,19 +38,27 @@ export const PartnerView: React.FC<PartnerViewProps> = ({ onOpenInviteModal }) =
   const [tokenInput, setTokenInput] = useState('');
   const [copied, setCopied] = useState(false);
 
-  const handleSendInvite = (e: React.FormEvent) => {
+  const handleSendInvite = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (inviteEmail.trim()) {
-      sendInvite(inviteEmail);
-      setInviteEmail('');
-    }
+    if (!inviteEmail.trim()) return;
+    const token = await sendInvite(inviteEmail);
+    if (token) setInviteEmail('');
   };
 
-  const handleAcceptInvite = (e: React.FormEvent) => {
+  const handleAcceptInvite = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (tokenInput.trim()) {
-      acceptInvite(tokenInput);
-      setTokenInput('');
+    if (!tokenInput.trim()) return;
+    const ok = await acceptInvite(tokenInput);
+    if (ok) setTokenInput('');
+  };
+
+  // Encerrar a parceria deixa os lançamentos com a conta original; quem sai
+  // recomeça vazio. Vale confirmar antes.
+  const handleEndPartnership = () => {
+    if (window.confirm(
+      'Encerrar a parceria? Os lançamentos ficam com a conta que criou a parceria, e você recomeça com um espaço vazio.'
+    )) {
+      void endPartnership();
     }
   };
 
@@ -106,7 +114,7 @@ export const PartnerView: React.FC<PartnerViewProps> = ({ onOpenInviteModal }) =
               </div>
 
               <button
-                onClick={endPartnership}
+                onClick={handleEndPartnership}
                 className="px-3.5 py-2 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 shrink-0"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -215,7 +223,7 @@ export const PartnerView: React.FC<PartnerViewProps> = ({ onOpenInviteModal }) =
                   <input
                     type="text"
                     required
-                    placeholder="Ex: DUO-8492-LOVE"
+                    placeholder="Ex: 3f2a9c14-7b5e-4d81-a0c6-1e8f2b7d9043"
                     value={tokenInput}
                     onChange={(e) => setTokenInput(e.target.value.toUpperCase())}
                     className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-mono uppercase focus:outline-none focus:ring-2 focus:ring-pink-500"

@@ -116,9 +116,9 @@ interface AppContextType {
 
   // Partnership & Subscription Actions
   updatePartnershipStatus: (status: 'none' | 'pending' | 'active', partnerEmail?: string) => void;
-  sendInvite: (email: string) => string; // returns token
-  acceptInvite: (token: string) => boolean;
-  endPartnership: () => void;
+  sendInvite: (email: string) => Promise<string | null>;
+  acceptInvite: (token: string) => Promise<boolean>;
+  endPartnership: () => Promise<boolean>;
   setSubscriptionPlan: (plano: 'free' | 'duo') => void;
 
   // Helpers & Toast
@@ -270,35 +270,39 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // só devolve quem divide o household — não há como pedir "todos os usuários".
   const [perfis, setPerfis] = useState<User[]>([]);
 
-  useEffect(() => {
-    if (!session) {
-      setPerfis([]);
+  /**
+   * Relê os perfis do household e o household de quem está logado. Também é
+   * chamada depois de aceitar ou encerrar uma parceria, quando a associação
+   * muda e, com ela, tudo o que o RLS passa a devolver.
+   */
+  const recarregarPerfil = async () => {
+    const usuario = session?.user;
+    if (!usuario) { setPerfis([]); setHouseholdId(''); return; }
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, nome, email, avatar, salario, cor_avatar, household_id');
+
+    if (error || !data) {
+      showToast('Não foi possível carregar o perfil.', 'error');
+      setCarregandoDados(false);
       return;
     }
 
-    let cancelado = false;
-    supabase
-      .from('profiles')
-      .select('id, nome, email, avatar, salario, cor_avatar, household_id')
-      .then(({ data, error }) => {
-        if (cancelado) return;
-        if (error || !data) {
-          showToast('Não foi possível carregar o perfil.', 'error');
-          setCarregandoDados(false);
-          return;
-        }
-        setHouseholdId(data.find(l => l.id === session.user.id)?.household_id ?? '');
-        setPerfis(data.map(linha => ({
-          id: linha.id,
-          nome: linha.nome,
-          email: linha.email ?? '',
-          avatar: linha.avatar || avatarDeIniciais(linha.nome, linha.cor_avatar),
-          salario: Number(linha.salario) || 0,
-          corAvatar: linha.cor_avatar
-        })));
-      });
+    setHouseholdId(data.find(l => l.id === usuario.id)?.household_id ?? '');
+    setPerfis(data.map(linha => ({
+      id: linha.id,
+      nome: linha.nome,
+      email: linha.email ?? '',
+      avatar: linha.avatar || avatarDeIniciais(linha.nome, linha.cor_avatar),
+      salario: Number(linha.salario) || 0,
+      corAvatar: linha.cor_avatar
+    })));
+  };
 
-    return () => { cancelado = true; };
+  useEffect(() => {
+    if (!session) { setPerfis([]); setHouseholdId(''); return; }
+    void recarregarPerfil();
   }, [session?.user.id]);
 
   // Carrega os dados do household. O RLS já restringe o que volta, então não
@@ -1105,72 +1109,92 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  const sendInvite = (email: string) => {
-    const token = `DUO-${Math.floor(1000 + Math.random() * 9000)}-LOVE`;
-    setPartnership({
-      id: `part-${Date.now()}`,
-      user1Id: currentUser.id,
-      status: 'pending',
-      inviteToken: token,
-      partnerEmail: email
+  /**
+   * Convite de parceria.
+   *
+   * O que havia aqui gerava `DUO-NNNN-LOVE` com Math.random e, do outro lado,
+   * aceitava qualquer string de 4 caracteres sem comparar com coisa alguma.
+   * Agora o token é um uuid criado pelo servidor, com validade de 7 dias, uso
+   * único e verificação de que o e-mail convidado é o de quem está aceitando.
+   * Nada disso pode morar no cliente: quem aceita precisa ler uma linha de um
+   * household do qual ainda não faz parte.
+   */
+  const sendInvite = async (email: string): Promise<string | null> => {
+    const { data, error } = await supabase.rpc('criar_convite_household', {
+      p_email: email.trim().toLowerCase()
     });
-    showToast(`Convite gerado para ${email}! Código: ${token}`, 'info');
-    return token;
+
+    if (error) {
+      const mensagens: Record<string, string> = {
+        parceria_ja_ativa: 'Você já tem uma parceria ativa.',
+        convite_para_si_mesmo: 'Use o e-mail da outra pessoa.',
+        sem_household: 'Não foi possível identificar sua conta.'
+      };
+      showToast(mensagens[error.message] ?? 'Não foi possível gerar o convite.', 'error');
+      return null;
+    }
+
+    const convite = Array.isArray(data) ? data[0] : data;
+    setPartnership(prev => ({
+      ...prev,
+      status: 'pending',
+      inviteToken: convite.token,
+      partnerEmail: convite.convidado_email
+    }));
+    showToast(`Convite criado para ${convite.convidado_email}. Envie o código.`, 'info');
+    return convite.token as string;
   };
 
-  const acceptInvite = (token: string) => {
-    if (token.trim().length >= 4) {
-      const inviterId = (partnership.user1Id && partnership.user1Id !== currentUser.id)
-        ? partnership.user1Id
-        : (partnership.partnerEmail ? todosUsuarios.find(u => u.email.toLowerCase() === partnership.partnerEmail?.toLowerCase())?.id : undefined)
-        || partnership.user1Id
-        || todosUsuarios.find(u => u.id !== currentUser.id)?.id
-        || currentUser.id;
-
-      const inviterUser = todosUsuarios.find(u => u.id === inviterId);
-
-      setPartnership(prev => ({
-        id: prev.id || `part-${Date.now()}`,
-        user1Id: inviterId,
-        user2Id: currentUser.id,
-        status: 'active',
-        inviteToken: token,
-        partnerName: inviterUser?.nome || prev.partnerName,
-        partnerEmail: inviterUser?.email || prev.partnerEmail || partnership.partnerEmail
-      }));
-      setSubscription({
-        userId: currentUser.id,
-        plano: 'duo',
-        status: 'active'
-      });
-      showToast('Convite aceito! Parceria Ativa iniciada com sucesso! 💜', 'success');
-      return true;
-    } else {
-      showToast('Código de convite inválido', 'error');
+  const acceptInvite = async (token: string): Promise<boolean> => {
+    // Formato conferido antes de ir à rede, só para dar erro imediato: a
+    // validação que vale é a do servidor.
+    const limpo = token.trim();
+    const ehUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(limpo);
+    if (!ehUuid) {
+      showToast('Código de convite inválido.', 'error');
       return false;
     }
-  };
 
-  const endPartnership = () => {
-    setPartnership({
-      id: `part-${Date.now()}`,
-      user1Id: currentUser.id,
-      status: 'none',
-      inviteToken: ''
-    });
-    showToast('Parceria encerrada com sucesso.', 'info');
-  };
-
-  const setSubscriptionPlan = (plano: 'free' | 'duo') => {
-    setSubscription({
-      userId: currentUser.id,
-      plano,
-      status: 'active'
-    });
-    if (plano === 'free') {
-      setPartnership(prev => ({ ...prev, status: 'none' }));
+    const { error } = await supabase.rpc('aceitar_convite_household', { p_token: limpo });
+    if (error) {
+      const mensagens: Record<string, string> = {
+        convite_invalido: 'Convite inválido, já usado ou expirado.',
+        convite_proprio: 'Você não pode aceitar o próprio convite.',
+        convite_de_outro_email: 'Este convite foi emitido para outro e-mail.',
+        parceria_ja_ativa: 'Essa parceria já tem duas pessoas.',
+        ja_tem_parceria: 'Você já tem uma parceria ativa.'
+      };
+      showToast(mensagens[error.message] ?? 'Não foi possível aceitar o convite.', 'error');
+      return false;
     }
-    showToast(`Plano alterado para ${plano.toUpperCase()}!`, 'info');
+
+    // A associação mudou: recarregar é o jeito de trazer os dados do casal e a
+    // nova composição do household de uma vez.
+    showToast('Parceria iniciada! 💜', 'success');
+    await recarregarPerfil();
+    return true;
+  };
+
+  const endPartnership = async (): Promise<boolean> => {
+    const { error } = await supabase.rpc('sair_da_parceria');
+    if (error) {
+      showToast('Não foi possível encerrar a parceria.', 'error');
+      return false;
+    }
+    showToast('Parceria encerrada. Os lançamentos ficaram com a conta original.', 'info');
+    await recarregarPerfil();
+    return true;
+  };
+
+  /**
+   * O plano deixou de ser editável pelo cliente: a policy de escrita em
+   * subscriptions foi removida justamente porque qualquer pessoa se dava o
+   * plano duo com um PATCH. Trocar de plano passa a depender de cobrança, que
+   * é o item 6 do roteiro e ainda não existe. A função fica, para não quebrar
+   * as telas, mas diz a verdade em vez de fingir que mudou algo.
+   */
+  const setSubscriptionPlan = (_plano: 'free' | 'duo') => {
+    showToast('A troca de plano ainda não está disponível.', 'info');
   };
 
   return (
