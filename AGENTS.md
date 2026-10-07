@@ -26,7 +26,7 @@ pedido de tarefa → branch (de develop) → implementação → (code review op
 ## Convenção de branch e merge
 
 - **Branches de longa duração:** `develop` (integração) e `main` (release). Resolver `main` dinamicamente com `git symbolic-ref refs/remotes/origin/HEAD`, nunca presumir.
-- **Branches de trabalho:** `feat/<slug-curto>` ou `fix/<slug-curto>`, em minúsculas com hífens, sempre a partir de `develop`.
+- **Branches de trabalho:** `feat/<slug-curto>`, `fix/<slug-curto>` ou `perf/<slug-curto>`, em minúsculas com hífens, sempre a partir de `develop`. (`perf/` entrou com o code-splitting: a mudança não acrescenta comportamento nem corrige defeito, e chamá-la de `feat` ou `fix` mentiria sobre o diff.)
 - **Merge:** `git merge --no-ff <branch>` por padrão, para preservar o ponto de integração de cada tarefa. (Trocar para fast-forward se preferir histórico linear — registrar a preferência aqui.)
 - **Publicação:** `develop → main` apenas sob pedido explícito, após `npm run lint` + `npm run build` verdes e confirmação do diff `main..develop`.
 - **Push:** `develop` é enviada automaticamente após cada merge com gates verdes, sem perguntar. `main` nunca: o push dela só acontece dentro de uma publicação explícita, com confirmação.
@@ -40,7 +40,7 @@ Conventional Commits, resumo imperativo curto (até ~50 caracteres), sem ponto f
 <tipo>(<escopo opcional>): <resumo>
 ```
 
-Tipos usuais: `feat`, `fix`, `refactor`, `style`, `docs`, `chore`, `test`.
+Tipos usuais: `feat`, `fix`, `perf`, `refactor`, `style`, `docs`, `chore`, `test`.
 
 ## Gates de verificação
 
