@@ -15,23 +15,27 @@ export const PartnerInviteModal: React.FC<PartnerInviteModalProps> = ({ isOpen, 
   const [enterToken, setEnterToken] = useState('');
   const [generatedToken, setGeneratedToken] = useState(partnership.inviteToken || '');
   const [copied, setCopied] = useState(false);
+  const [enviando, setEnviando] = useState(false);
 
   if (!isOpen) return null;
 
-  const handleSendInvite = (e: React.FormEvent) => {
+  const handleSendInvite = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!partnerEmail.trim()) return;
-    const token = sendInvite(partnerEmail);
-    setGeneratedToken(token);
+    if (!partnerEmail.trim() || enviando) return;
+    setEnviando(true);
+    const token = await sendInvite(partnerEmail);
+    setEnviando(false);
+    // O token vem do servidor; sem ele não há o que exibir.
+    if (token) setGeneratedToken(token);
   };
 
-  const handleAcceptInvite = (e: React.FormEvent) => {
+  const handleAcceptInvite = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!enterToken.trim()) return;
-    const success = acceptInvite(enterToken);
-    if (success) {
-      onClose();
-    }
+    if (!enterToken.trim() || enviando) return;
+    setEnviando(true);
+    const ok = await acceptInvite(enterToken);
+    setEnviando(false);
+    if (ok) onClose();
   };
 
   const copyToClipboard = () => {
@@ -101,7 +105,7 @@ export const PartnerInviteModal: React.FC<PartnerInviteModalProps> = ({ isOpen, 
                   placeholder="sibeli@exemplo.com.br"
                   value={partnerEmail}
                   onChange={(e) => setPartnerEmail(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500"
+                  className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500"
                 />
               </div>
 
@@ -145,10 +149,10 @@ export const PartnerInviteModal: React.FC<PartnerInviteModalProps> = ({ isOpen, 
               <input
                 type="text"
                 required
-                placeholder="Ex: DUO-8492-LOVE"
+                placeholder="Ex: 3f2a9c14-7b5e-4d81-a0c6-1e8f2b7d9043"
                 value={enterToken}
                 onChange={(e) => setEnterToken(e.target.value.toUpperCase())}
-                className="w-full px-3.5 py-3 rounded-xl border border-slate-200 text-sm font-mono tracking-widest uppercase focus:outline-none focus:ring-2 focus:ring-pink-500"
+                className="campo-form w-full px-3.5 py-3 rounded-xl border border-slate-200 text-sm font-mono tracking-widest uppercase focus:outline-none focus:ring-2 focus:ring-pink-500"
               />
             </div>
 

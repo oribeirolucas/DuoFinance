@@ -37,20 +37,41 @@ export const PartnerView: React.FC<PartnerViewProps> = ({ onOpenInviteModal }) =
   const [inviteEmail, setInviteEmail] = useState('');
   const [tokenInput, setTokenInput] = useState('');
   const [copied, setCopied] = useState(false);
+  const [enviando, setEnviando] = useState(false);
 
-  const handleSendInvite = (e: React.FormEvent) => {
+  const handleSendInvite = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (inviteEmail.trim()) {
-      sendInvite(inviteEmail);
-      setInviteEmail('');
+    if (!inviteEmail.trim() || enviando) return;
+    setEnviando(true);
+    try {
+      const token = await sendInvite(inviteEmail);
+      if (token) setInviteEmail('');
+    } finally {
+      setEnviando(false);
     }
   };
 
-  const handleAcceptInvite = (e: React.FormEvent) => {
+  const handleAcceptInvite = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (tokenInput.trim()) {
-      acceptInvite(tokenInput);
-      setTokenInput('');
+    if (!tokenInput.trim() || enviando) return;
+    setEnviando(true);
+    try {
+      const ok = await acceptInvite(tokenInput);
+      if (ok) setTokenInput('');
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  // O texto precisa ser verdadeiro para quem quer que clique: os lançamentos
+  // ficam com a conta que PERMANECE, não com a que criou a parceria. Quem sai
+  // recomeça vazio, seja quem for.
+  const handleEndPartnership = () => {
+    if (window.confirm(
+      'Encerrar a parceria? Todos os lançamentos ficam com a conta que permanece, '
+      + 'inclusive os que você registrou. Você recomeça com um espaço vazio.'
+    )) {
+      void endPartnership();
     }
   };
 
@@ -106,7 +127,7 @@ export const PartnerView: React.FC<PartnerViewProps> = ({ onOpenInviteModal }) =
               </div>
 
               <button
-                onClick={endPartnership}
+                onClick={handleEndPartnership}
                 className="px-3.5 py-2 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 shrink-0"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -176,11 +197,12 @@ export const PartnerView: React.FC<PartnerViewProps> = ({ onOpenInviteModal }) =
                     placeholder="parceiro@exemplo.com"
                     value={inviteEmail}
                     onChange={(e) => setInviteEmail(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
                   />
                 </div>
                 <button
                   type="submit"
+                  disabled={enviando}
                   className="w-full py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-semibold text-xs transition-colors"
                 >
                   Gerar Código de Convite
@@ -215,14 +237,15 @@ export const PartnerView: React.FC<PartnerViewProps> = ({ onOpenInviteModal }) =
                   <input
                     type="text"
                     required
-                    placeholder="Ex: DUO-8492-LOVE"
+                    placeholder="Ex: 3f2a9c14-7b5e-4d81-a0c6-1e8f2b7d9043"
                     value={tokenInput}
                     onChange={(e) => setTokenInput(e.target.value.toUpperCase())}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-mono uppercase focus:outline-none focus:ring-2 focus:ring-pink-500"
+                    className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-mono uppercase focus:outline-none focus:ring-2 focus:ring-pink-500"
                   />
                 </div>
                 <button
                   type="submit"
+                  disabled={enviando}
                   className="w-full py-2.5 bg-pink-600 hover:bg-pink-700 text-white rounded-xl font-semibold text-xs transition-colors"
                 >
                   Conectar Contas Agora

@@ -3,10 +3,13 @@ import { useApp } from '../../context/AppContext';
 import { Heart, Lock, Mail, User as UserIcon, ArrowRight, ShieldCheck, Sparkles, AlertCircle, Check, X } from 'lucide-react';
 
 export const AuthView: React.FC = () => {
-  const { login, signup, users, authScreen, setAuthScreen } = useApp();
+  const { login, signup, recuperarSenha, authScreen, setAuthScreen } = useApp();
 
-  const [email, setEmail] = useState('lucas@exemplo.com.br');
-  const [password, setPassword] = useState('123456');
+  // Campos começam vazios: credencial preenchida é credencial embarcada no
+  // bundle de produção.
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [enviando, setEnviando] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState('');
   const [nome, setNome] = useState('');
   const [salario, setSalario] = useState('6500');
@@ -27,22 +30,26 @@ export const AuthView: React.FC = () => {
 
   const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
+    if (enviando) return;
 
     if (authScreen === 'login') {
       if (!email.trim()) {
         setErrorMsg('Por favor, informe seu e-mail.');
         return;
       }
+      if (!password) {
+        setErrorMsg('Por favor, informe sua senha.');
+        return;
+      }
+      setEnviando(true);
       try {
-        const success = login(email.trim(), password);
-        if (!success) {
-          setErrorMsg('E-mail ou senha incorretos.');
-        }
-      } catch (err) {
-        console.error('Erro na autenticação:', err);
+        const ok = await login(email.trim(), password);
+        if (!ok) setErrorMsg('E-mail ou senha incorretos.');
+      } finally {
+        setEnviando(false);
       }
     } else if (authScreen === 'cadastro') {
       if (!email.trim()) {
@@ -57,25 +64,33 @@ export const AuthView: React.FC = () => {
         setErrorMsg('As senhas não coincidem. Verifique o campo de confirmação.');
         return;
       }
+      setEnviando(true);
       try {
-        const success = signup(nome.trim() || 'Novo Usuário', email.trim(), Number(salario) || 5000, password);
-        if (!success) {
-          setErrorMsg('Não foi possível concluir o cadastro.');
-        }
-      } catch (err) {
-        console.error('Erro no cadastro:', err);
+        const ok = await signup(nome.trim() || 'Novo Usuário', email.trim(), Number(salario) || 5000, password);
+        if (!ok) setErrorMsg('Não foi possível concluir o cadastro.');
+      } finally {
+        setEnviando(false);
       }
     } else if (authScreen === 'esqueci-senha') {
       if (!recoveryEmail.trim()) {
         setErrorMsg('Por favor, digite seu e-mail para recuperação.');
         return;
       }
-      setRecoverySubmitted(true);
+      setEnviando(true);
+      try {
+        // O servidor responde com sucesso mesmo para e-mail sem conta, então
+        // confirmar o envio não revela quem tem conta. Mas se o envio falhou
+        // de fato, mostrar "E-mail enviado!" seria mentira.
+        const ok = await recuperarSenha(recoveryEmail.trim());
+        if (ok) {
+          setRecoverySubmitted(true);
+        } else {
+          setErrorMsg('Não foi possível enviar agora. Tente novamente em alguns minutos.');
+        }
+      } finally {
+        setEnviando(false);
+      }
     }
-  };
-
-  const handleQuickDemoLogin = (userEmail: string) => {
-    login(userEmail, 'Demo123');
   };
 
   const handleSwitchScreen = (screen: 'login' | 'cadastro' | 'esqueci-senha') => {
@@ -158,28 +173,15 @@ export const AuthView: React.FC = () => {
               </div>
             )}
 
-            {/* Quick Demo Login Cards (Only on login screen when VITE_DEMO_MODE === 'true') */}
+            {/* Os atalhos de "Login Rápido Demo" saíram junto com as senhas de
+                demonstração. Eles dependiam de uma senha fixa conhecida por
+                todos, embutida no código — exatamente o que o modo demo
+                precisa deixar de ter para a aplicação ir a produção. Em modo
+                demo, crie as contas de exemplo pelo cadastro normal. */}
             {authScreen === 'login' && isDemoMode && (
-              <div className="mb-6 p-3.5 bg-purple-50/80 border border-purple-200/80 rounded-2xl">
-                <p className="text-[11px] font-bold text-purple-900 uppercase tracking-wider mb-2 text-center">
-                  Entrar Rapidamente Como (Demo):
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  {users.map((u) => (
-                    <button
-                      key={u.id}
-                      type="button"
-                      onClick={() => handleQuickDemoLogin(u.email)}
-                      className="p-2 bg-white hover:bg-purple-100/80 border border-purple-200 rounded-xl flex items-center gap-2 text-left transition-all shadow-2xs"
-                    >
-                      <img src={u.avatar} alt={u.nome} className="w-7 h-7 rounded-full object-cover shrink-0" />
-                      <div className="truncate">
-                        <span className="block text-xs font-bold text-slate-800 truncate">{u.nome.split(' ')[0]}</span>
-                        <span className="block text-[10px] text-slate-500">Demo</span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
+              <div className="mb-6 p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-800">
+                Modo demonstração ativo. As contas de exemplo são criadas pelo cadastro,
+                com senha própria — não há mais senha padrão.
               </div>
             )}
 
@@ -225,7 +227,7 @@ export const AuthView: React.FC = () => {
                           setRecoveryEmail(e.target.value);
                           if (errorMsg) setErrorMsg('');
                         }}
-                        className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        className="campo-form w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
                       />
                     </div>
                   </div>
@@ -246,7 +248,7 @@ export const AuthView: React.FC = () => {
                           setNome(e.target.value);
                           if (errorMsg) setErrorMsg('');
                         }}
-                        className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        className="campo-form w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
                       />
                     </div>
                   </div>
@@ -261,13 +263,13 @@ export const AuthView: React.FC = () => {
                       <input
                         type="email"
                         required
-                        placeholder="lucas@exemplo.com.br"
+                        placeholder="voce@email.com"
                         value={email}
                         onChange={(e) => {
                           setEmail(e.target.value);
                           if (errorMsg) setErrorMsg('');
                         }}
-                        className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        className="campo-form w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
                       />
                     </div>
                   </div>
@@ -299,7 +301,7 @@ export const AuthView: React.FC = () => {
                           setPassword(e.target.value);
                           if (errorMsg) setErrorMsg('');
                         }}
-                        className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        className="campo-form w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
                       />
                     </div>
 
@@ -339,7 +341,7 @@ export const AuthView: React.FC = () => {
                           setConfirmPassword(e.target.value);
                           if (errorMsg) setErrorMsg('');
                         }}
-                        className={`w-full pl-10 pr-3.5 py-2.5 rounded-xl border text-xs focus:outline-none focus:ring-2 ${
+                        className={`campo-form w-full pl-10 pr-3.5 py-2.5 rounded-xl border text-xs focus:outline-none focus:ring-2 ${
                           confirmPassword.length > 0 && !passwordsMatch
                             ? 'border-rose-300 focus:ring-rose-500'
                             : 'border-slate-200 focus:ring-purple-500'
@@ -375,7 +377,7 @@ export const AuthView: React.FC = () => {
                         setSalario(e.target.value);
                         if (errorMsg) setErrorMsg('');
                       }}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      className="campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
                     />
                   </div>
                 )}
@@ -383,14 +385,17 @@ export const AuthView: React.FC = () => {
                 {/* Submit Button */}
                 <button
                   type="submit"
-                  className="w-full py-3 bg-gradient-duo text-white rounded-xl font-bold text-xs shadow-md shadow-purple-500/25 flex items-center justify-center gap-2 hover:opacity-95 transition-all"
+                  disabled={enviando}
+                  aria-busy={enviando}
+                  className="w-full py-3 bg-gradient-duo text-white rounded-xl font-bold text-xs shadow-md shadow-purple-500/25 flex items-center justify-center gap-2 hover:opacity-95 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   <span>
-                    {authScreen === 'cadastro' && 'Cadastrar e Acessar'}
-                    {authScreen === 'login' && 'Entrar na Conta'}
-                    {authScreen === 'esqueci-senha' && 'Enviar link de recuperação'}
+                    {enviando && 'Aguarde...'}
+                    {!enviando && authScreen === 'cadastro' && 'Cadastrar e Acessar'}
+                    {!enviando && authScreen === 'login' && 'Entrar na Conta'}
+                    {!enviando && authScreen === 'esqueci-senha' && 'Enviar link de recuperação'}
                   </span>
-                  <ArrowRight className="w-4 h-4" />
+                  {!enviando && <ArrowRight className="w-4 h-4" />}
                 </button>
               </form>
             )}

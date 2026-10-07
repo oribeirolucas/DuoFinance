@@ -15,19 +15,15 @@ import {
   ExpenseCategory,
   IncomeRecurrenceConfig
 } from '../types';
+import { avatarDeIniciais } from '../utils/avatar';
 import {
-  mockUsers,
-  mockExpenses,
-  mockIncomes,
-  mockMonthlyGoals,
-  mockFinancialGoals,
-  mockDebts,
-  mockBudgets,
-  mockPartnership,
-  mockSubscription,
-  mockIncomeRecurrenceConfigs
-} from '../data/initialData';
-import { hashPassword } from '../utils/hash';
+  paraExpense, deExpense, paraIncome, deIncome,
+  paraRecorrencia, deRecorrencia, paraMonthlyGoal, deMonthlyGoal,
+  paraFinancialGoal, deFinancialGoal, paraDebt, deDebt,
+  paraBudget, deBudget, paraSubscription
+} from '../lib/mappers';
+import { supabase, supabaseConfigurado } from '../lib/supabase';
+import type { Session } from '@supabase/supabase-js';
 
 interface ToastState {
   id: string;
@@ -38,18 +34,28 @@ interface ToastState {
 interface AppContextType {
   // Auth & Navigation
   isAuthenticated: boolean;
+  /** true até a sessão existente ser resolvida; evita piscar a tela de login. */
+  authLoading: boolean;
+  /** true enquanto os dados do household chegam do banco. */
+  carregandoDados: boolean;
   authScreen: AuthScreen;
   setAuthScreen: (screen: AuthScreen) => void;
-  login: (email: string, password?: string) => boolean;
-  register: (nome: string, email: string, salario?: number, password?: string) => boolean;
-  signup: (nome: string, email: string, salario?: number, password?: string) => boolean;
-  logout: () => void;
-  
+  login: (email: string, password: string) => Promise<boolean>;
+  register: (nome: string, email: string, salario?: number, password?: string) => Promise<boolean>;
+  signup: (nome: string, email: string, salario?: number, password?: string) => Promise<boolean>;
+  logout: () => Promise<void>;
+  recuperarSenha: (email: string) => Promise<boolean>;
+
+  // Conta do usuário
+  atualizarPerfil: (dados: { nome?: string; salario?: number; avatar?: string }) => Promise<boolean>;
+  enviarFotoPerfil: (arquivo: File) => Promise<string | null>;
+  trocarSenha: (senhaAtual: string, novaSenha: string) => Promise<boolean>;
+  trocarEmail: (novoEmail: string) => Promise<boolean>;
+
   // Users & Active Partner Context
   currentUser: User;
   partner: User | null;
   users: User[];
-  setCurrentUserId: (id: string) => void;
   getHouseholdUserIds: () => string[];
 
   // Active View Tab
@@ -93,7 +99,10 @@ interface AppContextType {
   deleteMonthlyGoal: (id: string) => void;
   addGoalContribution: (goalId: string, amount: number) => void;
 
-  addFinancialGoal: (goal: Omit<FinancialGoal, 'id' | 'valorAtual' | 'status'>) => void;
+  addFinancialGoal: (
+    goal: Omit<FinancialGoal, 'id' | 'valorAtual' | 'status'>
+      & { valorAtual?: number; status?: FinancialGoal['status'] }
+  ) => void;
   updateFinancialGoal: (id: string, goal: Partial<FinancialGoal>) => void;
   deleteFinancialGoal: (id: string) => void;
   addFinancialGoalContribution: (goalId: string, amount: number) => void;
@@ -107,15 +116,14 @@ interface AppContextType {
 
   // Partnership & Subscription Actions
   updatePartnershipStatus: (status: 'none' | 'pending' | 'active', partnerEmail?: string) => void;
-  sendInvite: (email: string) => string; // returns token
-  acceptInvite: (token: string) => boolean;
-  endPartnership: () => void;
+  sendInvite: (email: string) => Promise<string | null>;
+  acceptInvite: (token: string) => Promise<boolean>;
+  endPartnership: () => Promise<boolean>;
   setSubscriptionPlan: (plano: 'free' | 'duo') => void;
 
   // Helpers & Toast
   toasts: ToastState[];
   showToast: (message: string, type?: 'success' | 'info' | 'error') => void;
-  resetToDefaultData: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -123,15 +131,36 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 const LOCAL_STORAGE_KEY = 'duo_finance_v1_data';
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    const savedAuth = localStorage.getItem(`${LOCAL_STORAGE_KEY}_is_authenticated`);
-    return savedAuth === 'true';
-  });
+  // A sessão é a fonte da verdade da autenticação. Ela vem do Supabase, que
+  // valida o JWT no servidor — o localStorage deixa de decidir quem está
+  // logado, e o campo `_is_authenticated` some junto.
+  const [session, setSession] = useState<Session | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [authScreen, setAuthScreen] = useState<AuthScreen>('login');
-  const [currentUserId, setCurrentUserIdState] = useState<string>(() => {
-    const savedUserId = localStorage.getItem(`${LOCAL_STORAGE_KEY}_current_user_id`);
-    return savedUserId || '';
-  });
+
+  const isAuthenticated = session !== null;
+  const currentUserId = session?.user.id ?? '';
+
+  useEffect(() => {
+    if (!supabaseConfigurado) {
+      setAuthLoading(false);
+      return;
+    }
+
+    // Sem o catch, uma rejeição aqui deixaria authLoading eternamente true e o
+    // app giraria o spinner para sempre, sem formulário e sem explicação.
+    supabase.auth.getSession()
+      .then(({ data }) => setSession(data.session))
+      .catch(() => showToast('Não foi possível verificar a sessão.', 'error'))
+      .finally(() => setAuthLoading(false));
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_evento, novaSessao) => {
+      setSession(novaSessao);
+      setAuthLoading(false);
+    });
+
+    return () => sub.subscription.unsubscribe();
+  }, []);
   const [activeTab, setActiveTab] = useState<NavigationTab>('dashboard');
 
   // Theme State
@@ -160,74 +189,65 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, [theme]);
 
   // Core Data
-  const [users, setUsers] = useState<User[]>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_users`);
-    return saved ? JSON.parse(saved) : mockUsers;
+  // Os dados vivem no Postgres. Estes estados são apenas a cópia local que a
+  // interface renderiza; a hidratação acontece no efeito logo abaixo, depois
+  // que existe sessão, e cada escrita vai ao banco. Antes disto o localStorage
+  // era a base de dados — o que o parecer resume como "o cliente nunca é fonte
+  // de verdade".
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [incomes, setIncomes] = useState<Income[]>([]);
+  const [monthlyGoals, setMonthlyGoals] = useState<MonthlyGoal[]>([]);
+  const [financialGoals, setFinancialGoals] = useState<FinancialGoal[]>([]);
+  const [debts, setDebts] = useState<Debt[]>([]);
+  const [budgets, setBudgets] = useState<CategoryBudget[]>([]);
+  const [incomeRecurrenceConfigs, setIncomeRecurrenceConfigs] = useState<IncomeRecurrenceConfig[]>([]);
+  const [partnership, setPartnership] = useState<Partnership>({
+    id: '', user1Id: '', status: 'none', inviteToken: ''
   });
-
-  const [expenses, setExpenses] = useState<Expense[]>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_expenses`);
-    return saved ? JSON.parse(saved) : mockExpenses;
+  const [subscription, setSubscription] = useState<Subscription>({
+    userId: '', plano: 'free', status: 'active'
   });
+  const [householdId, setHouseholdId] = useState<string>('');
+  const [carregandoDados, setCarregandoDados] = useState(true);
 
-  const [incomes, setIncomes] = useState<Income[]>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_incomes`);
-    return saved ? JSON.parse(saved) : mockIncomes;
-  });
+  const [divisionRule, setDivisionRuleEstado] = useState<DivisionRule>('proportional');
 
-  const [monthlyGoals, setMonthlyGoals] = useState<MonthlyGoal[]>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_mgoals`);
-    return saved ? JSON.parse(saved) : mockMonthlyGoals;
-  });
-
-  const [financialGoals, setFinancialGoals] = useState<FinancialGoal[]>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_fgoals`);
-    return saved ? JSON.parse(saved) : mockFinancialGoals;
-  });
-
-  const [debts, setDebts] = useState<Debt[]>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_debts`);
-    return saved ? JSON.parse(saved) : mockDebts;
-  });
-
-  const [budgets, setBudgets] = useState<CategoryBudget[]>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_budgets`);
-    return saved ? JSON.parse(saved) : mockBudgets;
-  });
-
-  const [partnership, setPartnership] = useState<Partnership>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_partnership`);
-    return saved ? JSON.parse(saved) : mockPartnership;
-  });
-
-  const [subscription, setSubscription] = useState<Subscription>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_subscription`);
-    return saved ? JSON.parse(saved) : mockSubscription;
-  });
-
-  const [incomeRecurrenceConfigs, setIncomeRecurrenceConfigs] = useState<IncomeRecurrenceConfig[]>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_income_recurrence_configs`);
-    return saved ? JSON.parse(saved) : mockIncomeRecurrenceConfigs;
-  });
-
-  const [divisionRule, setDivisionRule] = useState<DivisionRule>('proportional');
+  // A regra de divisão era estado de tela, perdido a cada recarga e diferente
+  // para cada pessoa do casal. Agora é do household: os dois veem a mesma.
+  const setDivisionRule = (regra: DivisionRule) => {
+    const anterior = divisionRule;
+    if (!householdId) { setDivisionRuleEstado(regra); return; }
+    gravar(
+      () => { setDivisionRuleEstado(regra); return () => setDivisionRuleEstado(anterior); },
+      () => supabase.from('households').update({ divisao_regra: regra }).eq('id', householdId)
+    );
+  };
   const [toasts, setToasts] = useState<ToastState[]>([]);
 
-  // Persist to localStorage
-  useEffect(() => {
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_is_authenticated`, String(isAuthenticated));
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_current_user_id`, currentUserId);
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_users`, JSON.stringify(users));
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_expenses`, JSON.stringify(expenses));
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_incomes`, JSON.stringify(incomes));
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_mgoals`, JSON.stringify(monthlyGoals));
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_fgoals`, JSON.stringify(financialGoals));
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_debts`, JSON.stringify(debts));
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_budgets`, JSON.stringify(budgets));
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_partnership`, JSON.stringify(partnership));
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_subscription`, JSON.stringify(subscription));
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_income_recurrence_configs`, JSON.stringify(incomeRecurrenceConfigs));
-  }, [isAuthenticated, currentUserId, users, expenses, incomes, monthlyGoals, financialGoals, debts, budgets, partnership, subscription, incomeRecurrenceConfigs]);
+  /**
+   * Escrita otimista com desfazer.
+   *
+   * O contexto expõe ~60 funções síncronas que 14 componentes chamam. Torná-las
+   * assíncronas obrigaria a tratar carregamento em cada um deles. Então a
+   * mudança aparece na tela no mesmo instante, a gravação segue em paralelo e,
+   * se o banco recusar, o estado volta ao que era e o erro aparece. Quem decide
+   * se a escrita vale continua sendo o servidor.
+   */
+  const gravar = (
+    aplicar: () => () => void,
+    escrever: () => PromiseLike<{ error: unknown }>,
+    mensagemOk?: string
+  ) => {
+    const desfazer = aplicar();
+    void Promise.resolve(escrever()).then(({ error }) => {
+      if (error) {
+        desfazer();
+        showToast('Não foi possível salvar. Tente novamente.', 'error');
+        return;
+      }
+      if (mensagemOk) showToast(mensagemOk);
+    });
+  };
 
   const showToast = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
     const id = Math.random().toString(36).substring(2, 9);
@@ -246,47 +266,275 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     corAvatar: '#6C63FF'
   };
 
-  const currentUser: User = isAuthenticated
-    ? (users.find(u => u.id === currentUserId) || users[0] || emptyUser)
-    : emptyUser;
+  // Perfis do household, vindos do Postgres. O RLS garante que esta consulta
+  // só devolve quem divide o household — não há como pedir "todos os usuários".
+  const [perfis, setPerfis] = useState<User[]>([]);
+
+  /**
+   * Relê os perfis do household e o household de quem está logado. Também é
+   * chamada depois de aceitar ou encerrar uma parceria, quando a associação
+   * muda e, com ela, tudo o que o RLS passa a devolver.
+   */
+  const recarregarPerfil = async (): Promise<boolean> => {
+    const usuario = session?.user;
+    if (!usuario) { setPerfis([]); setHouseholdId(''); return false; }
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, nome, email, avatar, salario, cor_avatar, household_id');
+
+    if (error || !data) {
+      showToast('Não foi possível carregar o perfil.', 'error');
+      setCarregandoDados(false);
+      return false;
+    }
+
+    setHouseholdId(data.find(l => l.id === usuario.id)?.household_id ?? '');
+    setPerfis(data.map(linha => ({
+      id: linha.id,
+      nome: linha.nome,
+      email: linha.email ?? '',
+      avatar: linha.avatar || avatarDeIniciais(linha.nome, linha.cor_avatar),
+      salario: Number(linha.salario) || 0,
+      corAvatar: linha.cor_avatar
+    })));
+    return true;
+  };
+
+  useEffect(() => {
+    if (!session) { setPerfis([]); setHouseholdId(''); return; }
+    void recarregarPerfil();
+  }, [session?.user.id]);
+
+  // Carrega os dados do household. O RLS já restringe o que volta, então não
+  // há filtro por usuário na consulta: pedir "todas as despesas" devolve
+  // exatamente as do casal de quem está logado.
+  useEffect(() => {
+    if (!session) { setCarregandoDados(false); return; }
+    if (!householdId) return;
+
+    let cancelado = false;
+    setCarregandoDados(true);
+
+    Promise.all([
+      supabase.from('expenses').select('*').order('data', { ascending: false }),
+      supabase.from('incomes').select('*').order('data', { ascending: false }),
+      supabase.from('income_recurrence_configs').select('*'),
+      supabase.from('monthly_goals').select('*'),
+      supabase.from('financial_goals').select('*'),
+      supabase.from('debts').select('*'),
+      supabase.from('category_budgets').select('*'),
+      supabase.from('subscriptions').select('*').eq('user_id', session.user.id).maybeSingle(),
+      supabase.from('households').select('divisao_regra').eq('id', householdId).maybeSingle(),
+      supabase.from('household_members').select('user_id, papel'),
+    ]).then(([ex, inc, rec, mg, fg, dv, orc, assin, casa, membros]) => {
+      if (cancelado) return;
+
+      const falhou = [ex, inc, rec, mg, fg, dv, orc, assin, casa, membros].find(r => r.error);
+      if (falhou) {
+        showToast('Não foi possível carregar seus dados.', 'error');
+        setCarregandoDados(false);
+        return;
+      }
+
+      setExpenses((ex.data ?? []).map(paraExpense));
+      setIncomes((inc.data ?? []).map(paraIncome));
+      setIncomeRecurrenceConfigs((rec.data ?? []).map(paraRecorrencia));
+      setMonthlyGoals((mg.data ?? []).map(paraMonthlyGoal));
+      setFinancialGoals((fg.data ?? []).map(paraFinancialGoal));
+      setDebts((dv.data ?? []).map(paraDebt));
+      setBudgets((orc.data ?? []).map(paraBudget));
+      if (assin.data) setSubscription(paraSubscription(assin.data));
+      if (casa.data?.divisao_regra) setDivisionRuleEstado(casa.data.divisao_regra as DivisionRule);
+
+      // A parceria deixa de ser um objeto guardado e passa a ser derivada de
+      // quem está no household. Antes ela vinha do localStorage, onde podia
+      // dizer qualquer coisa; agora reflete a associação real no banco, que é
+      // a mesma que o RLS consulta para decidir o que cada um enxerga.
+      const linhasMembros = membros.data ?? [];
+      const dono = linhasMembros.find(m => m.papel === 'owner')?.user_id ?? session.user.id;
+      const outro = linhasMembros.find(m => m.user_id !== dono)?.user_id;
+      setPartnership({
+        id: householdId,
+        user1Id: dono,
+        user2Id: outro,
+        status: linhasMembros.length >= 2 ? 'active' : 'none',
+        inviteToken: ''
+      });
+      setCarregandoDados(false);
+    }).catch(() => {
+      // Sem isto, uma consulta rejeitada deixaria a tela de carregamento presa
+      // para sempre, sem erro e sem app.
+      if (cancelado) return;
+      showToast('Não foi possível carregar seus dados.', 'error');
+      setCarregandoDados(false);
+    });
+
+    return () => { cancelado = true; };
+  }, [session?.user.id, householdId]);
+
+  // Entre o login e a chegada do perfil há alguns quadros em que só se conhece
+  // o e-mail. O avatar precisa ser preenchido mesmo aí: src="" faz o navegador
+  // rebaixar o documento inteiro.
+  const currentUser: User =
+    perfis.find(u => u.id === currentUserId)
+    ?? (isAuthenticated
+      ? (() => {
+          const email = session?.user.email ?? '';
+          const nome = email.split('@')[0] || 'Você';
+          return {
+            ...emptyUser,
+            id: currentUserId,
+            nome,
+            email,
+            avatar: avatarDeIniciais(nome, emptyUser.corAvatar)
+          };
+        })()
+      : emptyUser);
+
+  // Os perfis do household são a lista completa de usuários visíveis: o RLS
+  // não deixa consultar mais do que isso.
+  const todosUsuarios: User[] = perfis;
 
   const partner: User | null = (() => {
     if (!isAuthenticated) return null;
     if (partnership.status !== 'active') return null;
 
     if (currentUser.id === partnership.user1Id && partnership.user2Id) {
-      return users.find(u => u.id === partnership.user2Id) || null;
+      return todosUsuarios.find(u => u.id === partnership.user2Id) || null;
     }
     if (currentUser.id === partnership.user2Id && partnership.user1Id) {
-      return users.find(u => u.id === partnership.user1Id) || null;
+      return todosUsuarios.find(u => u.id === partnership.user1Id) || null;
     }
 
     return null;
   })();
 
-  const setCurrentUserId = (id: string) => {
-    setCurrentUserIdState(id);
-    const targetUser = users.find(u => u.id === id);
-    if (targetUser) {
-      showToast(`Alternado para perfil: ${targetUser.nome}`, 'info');
+  // ---- conta do usuário ----
+
+  const atualizarPerfil = async (dados: { nome?: string; salario?: number; avatar?: string }): Promise<boolean> => {
+    if (!session) return false;
+
+    const linha: Record<string, unknown> = {};
+    if (dados.nome !== undefined) linha.nome = dados.nome.trim();
+    if (dados.salario !== undefined) linha.salario = dados.salario;
+    if (dados.avatar !== undefined) linha.avatar = dados.avatar;
+    if (Object.keys(linha).length === 0) return true;
+
+    const { error } = await supabase.from('profiles').update(linha).eq('id', session.user.id);
+    if (error) {
+      showToast('Não foi possível salvar as alterações.', 'error');
+      return false;
     }
+
+    setPerfis(prev => prev.map(p => (p.id === session.user.id
+      ? {
+          ...p,
+          nome: dados.nome?.trim() ?? p.nome,
+          salario: dados.salario ?? p.salario,
+          avatar: dados.avatar ?? p.avatar
+        }
+      : p)));
+    showToast('Perfil atualizado.', 'success');
+    return true;
   };
+
+  const enviarFotoPerfil = async (arquivo: File): Promise<string | null> => {
+    if (!session) return null;
+
+    // As mesmas regras valem no servidor (bucket com limite de 2 MB e lista de
+    // tipos). Checar aqui é só para dar erro imediato em vez de esperar o
+    // upload inteiro subir para ser recusado.
+    const tiposAceitos = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!tiposAceitos.includes(arquivo.type)) {
+      showToast('Use uma imagem JPG, PNG, WEBP ou GIF.', 'error');
+      return null;
+    }
+    if (arquivo.size > 2 * 1024 * 1024) {
+      showToast('A imagem precisa ter no máximo 2 MB.', 'error');
+      return null;
+    }
+
+    // Caminho começa pelo uuid do dono: é o que a policy do bucket exige, e
+    // impede sobrescrever a foto da outra pessoa.
+    const extensao = arquivo.name.split('.').pop()?.toLowerCase() || 'jpg';
+    const caminho = `${session.user.id}/${crypto.randomUUID()}.${extensao}`;
+
+    const { error } = await supabase.storage.from('avatares').upload(caminho, arquivo, {
+      cacheControl: '3600',
+      upsert: false
+    });
+    if (error) {
+      showToast('Não foi possível enviar a imagem.', 'error');
+      return null;
+    }
+
+    const { data } = supabase.storage.from('avatares').getPublicUrl(caminho);
+    return data.publicUrl;
+  };
+
+  const trocarSenha = async (senhaAtual: string, novaSenha: string): Promise<boolean> => {
+    const email = session?.user.email;
+    if (!email) return false;
+
+    // O Supabase troca a senha sem pedir a atual. Exigi-la aqui é o que impede
+    // que uma sessão esquecida aberta num computador alheio vire uma troca de
+    // senha — e, com ela, a perda da conta.
+    const { error: erroAuth } = await supabase.auth.signInWithPassword({ email, password: senhaAtual });
+    if (erroAuth) {
+      showToast('Senha atual incorreta.', 'error');
+      return false;
+    }
+
+    const { error } = await supabase.auth.updateUser({ password: novaSenha });
+    if (error) {
+      showToast(error.message || 'Não foi possível alterar a senha.', 'error');
+      return false;
+    }
+
+    showToast('Senha alterada com sucesso.', 'success');
+    return true;
+  };
+
+  const trocarEmail = async (novoEmail: string): Promise<boolean> => {
+    const { error } = await supabase.auth.updateUser({ email: novoEmail.trim().toLowerCase() });
+    if (error) {
+      showToast(error.message || 'Não foi possível alterar o e-mail.', 'error');
+      return false;
+    }
+    // O e-mail só muda de fato depois da confirmação no endereço novo.
+    showToast('Confirme a troca pelo link enviado ao novo e-mail.', 'info');
+    return true;
+  };
+
+  // setCurrentUserId foi removido. Ele assumia a identidade de outra pessoa e
+  // carimbava o id dela em tudo que fosse criado depois. Com RLS no banco a
+  // troca não teria efeito nenhum sobre o que é visível, então manter o botão
+  // seria mentira de interface.
 
   const updateUserSalario = (novoValor: number, userId?: string) => {
     const targetId = userId || currentUser.id;
     if (!targetId) return;
 
-    setUsers(prevUsers =>
-      prevUsers.map(u => (u.id === targetId ? { ...u, salario: novoValor } : u))
+    // Perfil real: grava no banco pela função que valida a associação ao
+    // household (set_member_salario), e atualiza a cópia local.
+    const anterior = perfis;
+    gravar(
+      () => { setPerfis(prev => prev.map(p => (p.id === targetId ? { ...p, salario: novoValor } : p)));
+              return () => setPerfis(anterior); },
+      () => supabase.rpc('set_member_salario', { p_user: targetId, p_valor: novoValor })
     );
   };
 
+  /**
+   * Continua existindo como conveniência para as telas, mas deixou de ser
+   * fronteira de segurança: o que chega aqui já veio filtrado pelo RLS, que
+   * não entrega linha de outro household por mais que o cliente peça. Filtrar
+   * de novo no front é só para agrupar por pessoa dentro do casal.
+   */
   const getHouseholdUserIds = (): string[] => {
     if (!currentUser || !currentUser.id) return [];
-    if (partner && partner.id) {
-      return [currentUser.id, partner.id];
-    }
-    return [currentUser.id];
+    return partner && partner.id ? [currentUser.id, partner.id] : [currentUser.id];
   };
 
   const householdUserIds = getHouseholdUserIds();
@@ -321,148 +569,196 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return householdUserIds.includes(id);
   });
 
-  const login = (email: string, password?: string): boolean => {
-    const cleanEmail = email.trim().toLowerCase();
-    const found = users.find(u => u.email.toLowerCase() === cleanEmail);
+  // A verificação de senha acontece no servidor, contra o hash bcrypt guardado
+  // em auth.users. O cliente nunca vê hash nenhum, e mensagem de erro não
+  // distingue "e-mail não existe" de "senha errada" — isso evita confirmar
+  // para um estranho quais e-mails têm conta.
+  const login = async (email: string, password: string): Promise<boolean> => {
+    if (!supabaseConfigurado) {
+      showToast('Aplicação sem backend configurado.', 'error');
+      return false;
+    }
 
-    if (!found) {
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
+      password
+    });
+
+    if (error) {
       showToast('E-mail ou senha incorretos', 'error');
       return false;
     }
 
-    const inputHash = hashPassword(password || '');
-    const userHash = found.senha || hashPassword('Demo123');
-
-    if (inputHash !== userHash) {
-      showToast('E-mail ou senha incorretos', 'error');
-      return false;
-    }
-
-    setCurrentUserIdState(found.id);
-    setIsAuthenticated(true);
-    showToast(`Bem-vindo(a) de volta, ${found.nome.split(' ')[0]}! 💜`, 'success');
+    showToast('Bem-vindo(a) de volta! 💜', 'success');
     return true;
   };
 
-  const signup = (nome: string, email: string, salario: number = 6500, password?: string): boolean => {
-    const cleanEmail = email.trim().toLowerCase();
-    const existing = users.find(u => u.email.toLowerCase() === cleanEmail);
-
-    const hashedPassword = password ? hashPassword(password) : hashPassword('Demo123');
-
-    if (existing) {
-      setUsers(prev => prev.map(u => u.id === existing.id ? {
-        ...u,
-        nome: nome || u.nome,
-        salario: Number(salario) || u.salario,
-        senha: hashedPassword
-      } : u));
-      setCurrentUserIdState(existing.id);
-      setIsAuthenticated(true);
-      showToast(`Bem-vindo(a) de volta, ${existing.nome.split(' ')[0]}! 💜`, 'success');
-      return true;
+  // E-mail já cadastrado passa a ser erro do servidor. Antes, o cadastro
+  // sobrescrevia o usuário existente e iniciava a sessão como ele — tomada de
+  // conta sem sequer pedir a senha.
+  const signup = async (
+    nome: string,
+    email: string,
+    salario: number = 6500,
+    password?: string
+  ): Promise<boolean> => {
+    if (!supabaseConfigurado) {
+      showToast('Aplicação sem backend configurado.', 'error');
+      return false;
+    }
+    if (!password) {
+      showToast('Informe uma senha para criar a conta.', 'error');
+      return false;
     }
 
-    const newId = `user-${Date.now()}`;
     const avatarList = [
       'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
       'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
       'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150&auto=format&fit=crop&q=80'
     ];
-    const avatar = avatarList[Math.floor(Math.random() * avatarList.length)];
 
-    const newUser: User = {
-      id: newId,
-      nome: nome.trim() || 'Novo Usuário',
-      email: email.trim(),
-      avatar,
-      salario: Number(salario) || 6500,
-      corAvatar: '#8B5CF6',
-      senha: hashedPassword
-    };
+    // Estes dados vão para raw_user_meta_data e são lidos pelo trigger
+    // handle_new_user, que cria household, perfil e associação numa transação.
+    const { data, error } = await supabase.auth.signUp({
+      email: email.trim().toLowerCase(),
+      password,
+      options: {
+        data: {
+          nome: nome.trim() || 'Novo Usuário',
+          salario: String(Number(salario) || 0),
+          cor_avatar: '#8B5CF6',
+          avatar: avatarList[Math.floor(Math.random() * avatarList.length)]
+        }
+      }
+    });
 
-    setUsers(prev => [...prev, newUser]);
-    setCurrentUserIdState(newId);
+    if (error) {
+      showToast(error.message || 'Não foi possível concluir o cadastro.', 'error');
+      return false;
+    }
 
-    // Initial income entry for salary
-    const initialIncome: Income = {
-      id: `inc-${Date.now()}`,
-      descricao: `Salário - ${newUser.nome}`,
-      valor: newUser.salario,
-      fonte: 'CLT / Trabalho',
-      registradoPor: newId,
-      data: new Date().toISOString().split('T')[0],
-      observacao: 'Renda mensal cadastrada no registro'
-    };
-    setIncomes(prev => [initialIncome, ...prev]);
+    // Com proteção contra enumeração ligada, cadastrar e-mail já existente
+    // "funciona" mas devolve identities vazio. O retorno e a mensagem precisam
+    // ser idênticos aos do cadastro legítimo sem sessão: se um caminho
+    // mostrasse erro e o outro não, bastaria tentar cadastrar um e-mail para
+    // descobrir se ele tem conta — a enumeração que isto deveria impedir.
+    const jaExistia = data.user?.identities?.length === 0;
 
-    setIsAuthenticated(true);
-    showToast(`Conta criada com sucesso para ${newUser.nome}! 🚀`, 'success');
+    if (jaExistia || !data.session) {
+      showToast('Verifique seu e-mail para confirmar a conta.', 'info');
+      return true;
+    }
+
+    showToast('Conta criada com sucesso! 🚀', 'success');
     return true;
   };
 
   const register = signup;
 
-  const logout = () => {
-    setIsAuthenticated(false);
-    setCurrentUserIdState('');
+  const logout = async () => {
+    await supabase.auth.signOut();
+    // Sem limpar, um segundo login na mesma aba renderiza os dados da conta
+    // anterior até a nova carga chegar.
+    setExpenses([]); setIncomes([]); setMonthlyGoals([]); setFinancialGoals([]);
+    setDebts([]); setBudgets([]); setIncomeRecurrenceConfigs([]); setPerfis([]);
+    setHouseholdId('');
     setAuthScreen('login');
-    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_is_authenticated`);
-    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_current_user_id`);
     showToast('Sessão encerrada com sucesso.', 'info');
+  };
+
+  // Antes isto só exibia "E-mail enviado!" sem fazer nada.
+  const recuperarSenha = async (email: string): Promise<boolean> => {
+    if (!supabaseConfigurado) {
+      showToast('Aplicação sem backend configurado.', 'error');
+      return false;
+    }
+
+    // O Supabase responde com sucesso mesmo para e-mail sem conta, então um
+    // erro aqui é falha real de envio (rede, limite de taxa) — vale informar,
+    // sem revelar nada sobre a existência da conta.
+    const { error } = await supabase.auth.resetPasswordForEmail(
+      email.trim().toLowerCase(),
+      { redirectTo: `${window.location.origin}/` }
+    );
+
+    return !error;
   };
 
   // CRUD EXPENSES
   const addExpense = (newExp: Omit<Expense, 'id'>) => {
-    const created: Expense = {
-      registradoPor: currentUser.id,
-      ...newExp,
-      id: `exp-${Date.now()}`
-    };
-    setExpenses(prev => [created, ...prev]);
-    showToast('Despesa registrada com sucesso!');
+    // Id gerado no cliente: assim a linha otimista já nasce com o id final, e
+    // um update ou um desfazer logo em seguida não erram o alvo.
+    const created: Expense = { registradoPor: currentUser.id, ...newExp, id: crypto.randomUUID() };
+    gravar(
+      () => { setExpenses(prev => [created, ...prev]);
+              return () => setExpenses(prev => prev.filter(e => e.id !== created.id)); },
+      () => supabase.from('expenses').insert(deExpense(created, householdId)),
+      'Despesa registrada com sucesso!'
+    );
   };
 
   const updateExpense = (id: string, data: Partial<Expense>) => {
-    setExpenses(prev => prev.map(e => e.id === id ? { ...e, ...data } : e));
-    showToast('Despesa atualizada!');
+    const anterior = expenses.find(e => e.id === id);
+    gravar(
+      () => { setExpenses(prev => prev.map(e => e.id === id ? { ...e, ...data } : e));
+              return () => setExpenses(prev => prev.map(e => e.id === id && anterior ? anterior : e)); },
+      () => supabase.from('expenses').update(deExpense(data)).eq('id', id),
+      'Despesa atualizada!'
+    );
   };
 
   const deleteExpense = (id: string) => {
-    setExpenses(prev => prev.filter(e => e.id !== id));
-    showToast('Despesa removida', 'info');
+    const indice = expenses.findIndex(e => e.id === id);
+    const removida = expenses[indice];
+    gravar(
+      () => { setExpenses(prev => prev.filter(e => e.id !== id));
+              return () => setExpenses(prev => { if (!removida) return prev;
+                const prox = [...prev]; prox.splice(Math.max(0, indice), 0, removida); return prox; }); },
+      () => supabase.from('expenses').delete().eq('id', id)
+    );
   };
 
   const toggleExpensePaid = (id: string) => {
-    setExpenses(prev => prev.map(e => {
-      if (e.id === id) {
-        const nextPaid = !e.pago;
-        showToast(nextPaid ? 'Despesa marcada como Paga! ✓' : 'Despesa marcada como Pendente', 'info');
-        return { ...e, pago: nextPaid };
-      }
-      return e;
-    }));
+    const alvo = expenses.find(e => e.id === id);
+    if (!alvo) return;
+    const pago = !alvo.pago;
+    gravar(
+      () => { setExpenses(prev => prev.map(e => e.id === id ? { ...e, pago } : e));
+              return () => setExpenses(prev => prev.map(e => e.id === id ? { ...e, pago: !pago } : e)); },
+      () => supabase.from('expenses').update({ pago }).eq('id', id)
+    );
   };
 
   // CRUD INCOMES
   const addIncome = (newInc: Omit<Income, 'id'>) => {
-    const created: Income = {
-      registradoPor: currentUser.id,
-      ...newInc,
-      id: `inc-${Date.now()}`
-    };
-    setIncomes(prev => [created, ...prev]);
-    showToast('Receita adicionada com sucesso! 💰');
+    const created: Income = { registradoPor: currentUser.id, ...newInc, id: crypto.randomUUID() };
+    gravar(
+      () => { setIncomes(prev => [created, ...prev]);
+              return () => setIncomes(prev => prev.filter(i => i.id !== created.id)); },
+      () => supabase.from('incomes').insert(deIncome(created, householdId)),
+      'Receita adicionada com sucesso! 💰'
+    );
   };
 
   const updateIncome = (id: string, data: Partial<Income>) => {
-    setIncomes(prev => prev.map(i => i.id === id ? { ...i, ...data } : i));
-    showToast('Receita atualizada!');
+    const anterior = incomes.find(i => i.id === id);
+    gravar(
+      () => { setIncomes(prev => prev.map(i => i.id === id ? { ...i, ...data } : i));
+              return () => setIncomes(prev => prev.map(i => i.id === id && anterior ? anterior : i)); },
+      () => supabase.from('incomes').update(deIncome(data)).eq('id', id),
+      'Receita atualizada!'
+    );
   };
 
   const deleteIncome = (id: string) => {
-    setIncomes(prev => prev.filter(i => i.id !== id));
-    showToast('Receita removida', 'info');
+    const indice = incomes.findIndex(i => i.id === id);
+    const removida = incomes[indice];
+    gravar(
+      () => { setIncomes(prev => prev.filter(i => i.id !== id));
+              return () => setIncomes(prev => { if (!removida) return prev;
+                const prox = [...prev]; prox.splice(Math.max(0, indice), 0, removida); return prox; }); },
+      () => supabase.from('incomes').delete().eq('id', id)
+    );
   };
 
   // INCOME RECURRENCE CONFIGS
@@ -472,21 +768,31 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const saveIncomeRecurrenceConfig = (config: IncomeRecurrenceConfig) => {
-    setIncomeRecurrenceConfigs(prev => {
-      const index = prev.findIndex(c => c.donoId === config.donoId && c.tipo === config.tipo);
-      if (index >= 0) {
-        const next = [...prev];
-        next[index] = config;
-        return next;
-      }
-      return [...prev, config];
-    });
-    showToast('Configuração de recorrência salva!', 'success');
+    const anterior = incomeRecurrenceConfigs;
+    // A tabela tem unique (dono_id, tipo): upsert por essa chave evita criar
+    // uma segunda configuração do mesmo tipo para a mesma pessoa.
+    // A tela monta ids legíveis como "irc-<usuario>-salario", que não cabem
+    // numa coluna uuid. O id real vem da linha já gravada, ou é novo.
+    const existente = incomeRecurrenceConfigs.find(c => c.donoId === config.donoId && c.tipo === config.tipo);
+    const comId = { ...config, id: existente?.id ?? crypto.randomUUID() };
+    gravar(
+      () => {
+        setIncomeRecurrenceConfigs(prev => {
+          const i = prev.findIndex(c => c.donoId === comId.donoId && c.tipo === comId.tipo);
+          if (i >= 0) { const prox = [...prev]; prox[i] = comId; return prox; }
+          return [...prev, comId];
+        });
+        return () => setIncomeRecurrenceConfigs(anterior);
+      },
+      () => supabase.from('income_recurrence_configs')
+        .upsert(deRecorrencia(comId, householdId), { onConflict: 'dono_id,tipo' }),
+      'Configuração de recorrência salva!'
+    );
   };
 
   const syncRecurrentIncomesForUser = (userId: string, year?: number, overrideSalary?: number) => {
     const targetYear = year || new Date().getFullYear();
-    const userToSync = users.find(u => u.id === userId);
+    const userToSync = todosUsuarios.find(u => u.id === userId);
     if (!userToSync) return;
 
     const userSalary = overrideSalary !== undefined ? overrideSalary : (userToSync.salario || 0);
@@ -561,170 +867,233 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     });
 
-    setIncomes(prev => {
-      const yearPrefix = `${targetYear}-`;
-      const nonRecurrentOrOtherUser = prev.filter(i => {
-        if (i.registradoPor !== userId) return true;
-        if (!i.data.startsWith(yearPrefix)) return true;
-        return i.tipo === 'renda_extra' || !i.tipo;
-      });
+    const novasReceitas: Income[] = generatedIncomes.map(inc => ({ ...inc, id: crypto.randomUUID() }));
+    const prefixoAno = `${targetYear}-`;
+    const anterior = incomes;
 
-      const newIncomesList: Income[] = generatedIncomes.map((inc, idx) => ({
-        ...inc,
-        id: `inc-rec-${userId}-${targetYear}-${inc.tipo}-${idx}-${Date.now()}`
-      }));
-
-      return [...newIncomesList, ...nonRecurrentOrOtherUser];
+    const mantidas = incomes.filter(i => {
+      if (i.registradoPor !== userId) return true;
+      if (!i.data.startsWith(prefixoAno)) return true;
+      return i.tipo === 'renda_extra' || !i.tipo;
     });
 
-    showToast(`Receitas recorrentes sincronizadas para ${userToSync.nome}! 💰`, 'success');
+    // Apaga e regera o ano inteiro em duas chamadas, não ~16 escritas soltas.
+    // A operação é idempotente — rodar de novo converge para o mesmo estado —
+    // então, se a segunda etapa falhar, repetir resolve. O guarda abaixo evita
+    // o caso ruim: inserir sem ter apagado, que duplicaria o ano.
+    setIncomes([...novasReceitas, ...mantidas]);
+
+    void supabase.from('incomes').delete()
+      .eq('registrado_por', userId)
+      .in('tipo', ['salario', 'ferias', 'decimo_terceiro'])
+      .gte('data', `${targetYear}-01-01`)
+      .lte('data', `${targetYear}-12-31`)
+      .then(({ error }) => {
+        if (error) {
+          setIncomes(anterior);
+          showToast('Não foi possível sincronizar as receitas.', 'error');
+          return;
+        }
+        return supabase.from('incomes')
+          .insert(novasReceitas.map(i => deIncome(i, householdId)))
+          .then(({ error: erroInsert }) => {
+            if (erroInsert) {
+              // A exclusão já foi confirmada pelo banco. Voltar ao estado
+              // anterior exibiria um ano de receitas que não existem mais —
+              // pior que mostrar o vazio real. A tela passa a refletir o que
+              // de fato está gravado, e a mensagem pede a repetição, que é
+              // segura: a operação converge para o mesmo resultado.
+              setIncomes(mantidas);
+              showToast('As receitas foram limpas, mas não recriadas. Sincronize novamente.', 'error');
+              return;
+            }
+            showToast(`Receitas recorrentes sincronizadas para ${userToSync.nome}! 💰`, 'success');
+          });
+      });
   };
 
   // MONTHLY GOALS
   const addMonthlyGoal = (goal: Omit<MonthlyGoal, 'id' | 'valorAtual' | 'status'>) => {
     const created: MonthlyGoal = {
-      donoId: currentUser.id,
-      ...goal,
-      id: `mgoal-${Date.now()}`,
-      valorAtual: 0,
-      status: 'em_andamento'
+      donoId: currentUser.id, ...goal, id: crypto.randomUUID(),
+      valorAtual: 0, status: 'em_andamento'
     };
-    setMonthlyGoals(prev => [created, ...prev]);
-    showToast('Nova meta de economia criada! 🎯');
+    gravar(
+      () => { setMonthlyGoals(prev => [created, ...prev]);
+              return () => setMonthlyGoals(prev => prev.filter(g => g.id !== created.id)); },
+      () => supabase.from('monthly_goals').insert(deMonthlyGoal(created, householdId)),
+      'Nova meta de economia criada! 🎯'
+    );
   };
 
   const updateMonthlyGoal = (id: string, data: Partial<MonthlyGoal>) => {
-    setMonthlyGoals(prev => prev.map(g => g.id === id ? { ...g, ...data } : g));
-    showToast('Meta atualizada!');
+    const anterior = monthlyGoals.find(g => g.id === id);
+    gravar(
+      () => { setMonthlyGoals(prev => prev.map(g => g.id === id ? { ...g, ...data } : g));
+              return () => setMonthlyGoals(prev => prev.map(g => g.id === id && anterior ? anterior : g)); },
+      () => supabase.from('monthly_goals').update(deMonthlyGoal(data)).eq('id', id),
+      'Meta atualizada!'
+    );
   };
 
   const deleteMonthlyGoal = (id: string) => {
-    setMonthlyGoals(prev => prev.filter(g => g.id !== id));
-    showToast('Meta excluída', 'info');
+    const indice = monthlyGoals.findIndex(g => g.id === id);
+    const removida = monthlyGoals[indice];
+    gravar(
+      () => { setMonthlyGoals(prev => prev.filter(g => g.id !== id));
+              return () => setMonthlyGoals(prev => { if (!removida) return prev;
+                const prox = [...prev]; prox.splice(Math.max(0, indice), 0, removida); return prox; }); },
+      () => supabase.from('monthly_goals').delete().eq('id', id)
+    );
   };
 
   const addGoalContribution = (goalId: string, amount: number) => {
-    setMonthlyGoals(prev => prev.map(g => {
-      if (g.id === goalId) {
-        const nextVal = g.valorAtual + amount;
-        const isDone = nextVal >= g.valorAlvo;
-        if (isDone) {
-          showToast(`Parabéns! Meta "${g.nome}" concluída com sucesso! 🎉`, 'success');
-        } else {
-          showToast(`Aporte de R$ ${amount.toFixed(2)} adicionado à meta!`, 'success');
-        }
-        return {
-          ...g,
-          valorAtual: nextVal,
-          status: isDone ? 'concluida' : 'em_andamento'
-        };
-      }
-      return g;
-    }));
+    const alvo = monthlyGoals.find(g => g.id === goalId);
+    if (!alvo) return;
+    const valorAtual = alvo.valorAtual + amount;
+    const concluida = valorAtual >= alvo.valorAlvo;
+    const status: MonthlyGoal['status'] = concluida ? 'concluida' : 'em_andamento';
+    gravar(
+      () => { setMonthlyGoals(prev => prev.map(g => g.id === goalId ? { ...g, valorAtual, status } : g));
+              return () => setMonthlyGoals(prev => prev.map(g => g.id === goalId ? alvo : g)); },
+      () => supabase.from('monthly_goals').update({ valor_atual: valorAtual, status }).eq('id', goalId),
+      concluida
+        ? `Parabéns! Meta "${alvo.nome}" concluída com sucesso! 🎉`
+        : `Aporte de R$ ${amount.toFixed(2)} adicionado à meta!`
+    );
   };
 
   // FINANCIAL GOALS (LONG TERM)
-  const addFinancialGoal = (goal: Omit<FinancialGoal, 'id' | 'valorAtual' | 'status'>) => {
+  const addFinancialGoal = (
+    goal: Omit<FinancialGoal, 'id' | 'valorAtual' | 'status'>
+      & { valorAtual?: number; status?: FinancialGoal['status'] }
+  ) => {
+    // O formulário tem campo de valor já guardado. Antes ele era descartado em
+    // silêncio, porque os padrões vinham depois do espalhamento.
     const created: FinancialGoal = {
       donoId: currentUser.id,
       ...goal,
-      id: `fgoal-${Date.now()}`,
-      valorAtual: 0,
-      status: 'em_andamento'
+      id: crypto.randomUUID(),
+      valorAtual: goal.valorAtual ?? 0,
+      status: goal.status ?? 'em_andamento'
     };
-    setFinancialGoals(prev => [created, ...prev]);
-    showToast('Sonho adicionado! Que the planejamento comece 🚀');
+    gravar(
+      () => { setFinancialGoals(prev => [created, ...prev]);
+              return () => setFinancialGoals(prev => prev.filter(f => f.id !== created.id)); },
+      () => supabase.from('financial_goals').insert(deFinancialGoal(created, householdId)),
+      'Sonho adicionado! Que o planejamento comece 🚀'
+    );
   };
 
   const updateFinancialGoal = (id: string, data: Partial<FinancialGoal>) => {
-    setFinancialGoals(prev => prev.map(f => f.id === id ? { ...f, ...data } : f));
-    showToast('Meta de longo prazo atualizada!');
+    const anterior = financialGoals.find(f => f.id === id);
+    gravar(
+      () => { setFinancialGoals(prev => prev.map(f => f.id === id ? { ...f, ...data } : f));
+              return () => setFinancialGoals(prev => prev.map(f => f.id === id && anterior ? anterior : f)); },
+      () => supabase.from('financial_goals').update(deFinancialGoal(data)).eq('id', id),
+      'Meta de longo prazo atualizada!'
+    );
   };
 
   const deleteFinancialGoal = (id: string) => {
-    setFinancialGoals(prev => prev.filter(f => f.id !== id));
-    showToast('Objetivo removido', 'info');
+    const indice = financialGoals.findIndex(f => f.id === id);
+    const removida = financialGoals[indice];
+    gravar(
+      () => { setFinancialGoals(prev => prev.filter(f => f.id !== id));
+              return () => setFinancialGoals(prev => { if (!removida) return prev;
+                const prox = [...prev]; prox.splice(Math.max(0, indice), 0, removida); return prox; }); },
+      () => supabase.from('financial_goals').delete().eq('id', id)
+    );
   };
 
   const addFinancialGoalContribution = (goalId: string, amount: number) => {
-    setFinancialGoals(prev => prev.map(f => {
-      if (f.id === goalId) {
-        const nextVal = f.valorAtual + amount;
-        const isDone = nextVal >= f.valorAlvo;
-        if (isDone) {
-          showToast(`Incrível! Vocês atingiram o objetivo "${f.nome}"! 🥂💜`, 'success');
-        } else {
-          showToast(`R$ ${amount.toFixed(2)} depositados para "${f.nome}"!`, 'success');
-        }
-        return {
-          ...f,
-          valorAtual: nextVal,
-          status: isDone ? 'concluida' : 'em_andamento'
-        };
-      }
-      return f;
-    }));
+    const alvo = financialGoals.find(f => f.id === goalId);
+    if (!alvo) return;
+    const valorAtual = alvo.valorAtual + amount;
+    const concluida = valorAtual >= alvo.valorAlvo;
+    const status: FinancialGoal['status'] = concluida ? 'concluida' : 'em_andamento';
+    gravar(
+      () => { setFinancialGoals(prev => prev.map(f => f.id === goalId ? { ...f, valorAtual, status } : f));
+              return () => setFinancialGoals(prev => prev.map(f => f.id === goalId ? alvo : f)); },
+      () => supabase.from('financial_goals').update({ valor_atual: valorAtual, status }).eq('id', goalId),
+      concluida
+        ? `Incrível! Vocês atingiram o objetivo "${alvo.nome}"! 🥂💜`
+        : `R$ ${amount.toFixed(2)} depositados para "${alvo.nome}"!`
+    );
   };
 
   // DEBTS
   const addDebt = (debt: Omit<Debt, 'id'>) => {
-    const created: Debt = {
-      registradoPor: currentUser.id,
-      ...debt,
-      id: `debt-${Date.now()}`
-    };
-    setDebts(prev => [created, ...prev]);
-    showToast('Dívida cadastrada com sucesso!');
+    const created: Debt = { registradoPor: currentUser.id, ...debt, id: crypto.randomUUID() };
+    gravar(
+      () => { setDebts(prev => [created, ...prev]);
+              return () => setDebts(prev => prev.filter(d => d.id !== created.id)); },
+      () => supabase.from('debts').insert(deDebt(created, householdId)),
+      'Dívida cadastrada com sucesso!'
+    );
   };
 
   const updateDebt = (id: string, data: Partial<Debt>) => {
-    setDebts(prev => prev.map(d => d.id === id ? { ...d, ...data } : d));
-    showToast('Dívida atualizada!');
+    const anterior = debts.find(d => d.id === id);
+    gravar(
+      () => { setDebts(prev => prev.map(d => d.id === id ? { ...d, ...data } : d));
+              return () => setDebts(prev => prev.map(d => d.id === id && anterior ? anterior : d)); },
+      () => supabase.from('debts').update(deDebt(data)).eq('id', id),
+      'Dívida atualizada!'
+    );
   };
 
   const deleteDebt = (id: string) => {
-    setDebts(prev => prev.filter(d => d.id !== id));
-    showToast('Dívida removida', 'info');
+    const indice = debts.findIndex(d => d.id === id);
+    const removida = debts[indice];
+    gravar(
+      () => { setDebts(prev => prev.filter(d => d.id !== id));
+              return () => setDebts(prev => { if (!removida) return prev;
+                const prox = [...prev]; prox.splice(Math.max(0, indice), 0, removida); return prox; }); },
+      () => supabase.from('debts').delete().eq('id', id)
+    );
   };
 
   const payDebtInstallment = (id: string, amount: number) => {
-    setDebts(prev => prev.map(d => {
-      if (d.id === id) {
-        const nextPaid = Math.min(d.valorTotal, d.valorPago + amount);
-        const fullyPaid = nextPaid >= d.valorTotal;
-        if (fullyPaid) {
-          showToast(`Uhuuul! Dívida "${d.nome}" quitada integralmente! 🥳`, 'success');
-        } else {
-          showToast(`Pagamento de R$ ${amount.toFixed(2)} registrado!`, 'success');
-        }
-        return {
-          ...d,
-          valorPago: nextPaid
-        };
-      }
-      return d;
-    }));
+    const alvo = debts.find(d => d.id === id);
+    if (!alvo) return;
+    // O banco recusa valor_pago acima do total; o clamp aqui evita o erro cru.
+    const valorPago = Math.min(alvo.valorTotal, alvo.valorPago + amount);
+    const quitada = valorPago >= alvo.valorTotal;
+    gravar(
+      () => { setDebts(prev => prev.map(d => d.id === id ? { ...d, valorPago } : d));
+              return () => setDebts(prev => prev.map(d => d.id === id ? alvo : d)); },
+      () => supabase.from('debts').update({ valor_pago: valorPago }).eq('id', id),
+      quitada
+        ? `Uhuuul! Dívida "${alvo.nome}" quitada integralmente! 🥳`
+        : `Pagamento de R$ ${amount.toFixed(2)} registrado!`
+    );
   };
 
   // BUDGET
   const updateBudget = (categoria: ExpenseCategory, limite: number) => {
-    setBudgets(prev => {
-      const activeOwnerId = currentUser.id;
-      const householdIds = getHouseholdUserIds();
-      const exists = prev.some(b => b.categoria === categoria && (!b.donoId || householdIds.includes(b.donoId)));
-      if (exists) {
-        return prev.map(b => (b.categoria === categoria && (!b.donoId || householdIds.includes(b.donoId))) ? { ...b, limite, donoId: b.donoId || activeOwnerId } : b);
-      }
-      return [...prev, { categoria, limite, donoId: activeOwnerId }];
-    });
-    showToast(`Orçamento de ${categoria} atualizado para R$ ${limite.toFixed(2)}`);
+    const anterior = budgets;
+    // A tabela tem unique (household_id, categoria): um orçamento por
+    // categoria por casal, que é o que a tela de fato mostra.
+    gravar(
+      () => {
+        setBudgets(prev => prev.some(b => b.categoria === categoria)
+          ? prev.map(b => b.categoria === categoria ? { ...b, limite, donoId: currentUser.id } : b)
+          : [...prev, { categoria, limite, donoId: currentUser.id }]);
+        return () => setBudgets(anterior);
+      },
+      () => supabase.from('category_budgets')
+        .upsert(deBudget({ categoria, limite, donoId: currentUser.id }, householdId),
+                { onConflict: 'household_id,categoria' }),
+      `Orçamento de ${categoria} atualizado para R$ ${limite.toFixed(2)}`
+    );
   };
 
   // PARTNERSHIP & SUBSCRIPTION
   const updatePartnershipStatus = (status: 'none' | 'pending' | 'active', partnerEmail?: string) => {
     setPartnership(prev => {
       const emailToFind = partnerEmail || prev.partnerEmail;
-      const partnerUser = emailToFind ? users.find(u => u.email.toLowerCase() === emailToFind.toLowerCase()) : null;
+      const partnerUser = emailToFind ? todosUsuarios.find(u => u.email.toLowerCase() === emailToFind.toLowerCase()) : null;
       return {
         ...prev,
         status,
@@ -741,101 +1110,127 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  const sendInvite = (email: string) => {
-    const token = `DUO-${Math.floor(1000 + Math.random() * 9000)}-LOVE`;
-    setPartnership({
-      id: `part-${Date.now()}`,
-      user1Id: currentUser.id,
-      status: 'pending',
-      inviteToken: token,
-      partnerEmail: email
+  /**
+   * Convite de parceria.
+   *
+   * O que havia aqui gerava `DUO-NNNN-LOVE` com Math.random e, do outro lado,
+   * aceitava qualquer string de 4 caracteres sem comparar com coisa alguma.
+   * Agora o token é um uuid criado pelo servidor, com validade de 7 dias, uso
+   * único e verificação de que o e-mail convidado é o de quem está aceitando.
+   * Nada disso pode morar no cliente: quem aceita precisa ler uma linha de um
+   * household do qual ainda não faz parte.
+   */
+  const sendInvite = async (email: string): Promise<string | null> => {
+    const { data, error } = await supabase.rpc('criar_convite_household', {
+      p_email: email.trim().toLowerCase()
     });
-    showToast(`Convite gerado para ${email}! Código: ${token}`, 'info');
-    return token;
+
+    if (error) {
+      const mensagens: Record<string, string> = {
+        parceria_ja_ativa: 'Você já tem uma parceria ativa.',
+        convite_para_si_mesmo: 'Use o e-mail da outra pessoa.',
+        sem_household: 'Não foi possível identificar sua conta.'
+      };
+      showToast(mensagens[error.message] ?? 'Não foi possível gerar o convite.', 'error');
+      return null;
+    }
+
+    const convite = Array.isArray(data) ? data[0] : data;
+    if (!convite?.token) {
+      showToast('O servidor não devolveu o código do convite.', 'error');
+      return null;
+    }
+    setPartnership(prev => ({
+      ...prev,
+      status: 'pending',
+      inviteToken: convite.token,
+      partnerEmail: convite.convidado_email
+    }));
+    showToast(`Convite criado para ${convite.convidado_email}. Envie o código.`, 'info');
+    return convite.token as string;
   };
 
-  const acceptInvite = (token: string) => {
-    if (token.trim().length >= 4) {
-      const inviterId = (partnership.user1Id && partnership.user1Id !== currentUser.id)
-        ? partnership.user1Id
-        : (partnership.partnerEmail ? users.find(u => u.email.toLowerCase() === partnership.partnerEmail?.toLowerCase())?.id : undefined)
-        || partnership.user1Id
-        || users.find(u => u.id !== currentUser.id)?.id
-        || currentUser.id;
-
-      const inviterUser = users.find(u => u.id === inviterId);
-
-      setPartnership(prev => ({
-        id: prev.id || `part-${Date.now()}`,
-        user1Id: inviterId,
-        user2Id: currentUser.id,
-        status: 'active',
-        inviteToken: token,
-        partnerName: inviterUser?.nome || prev.partnerName,
-        partnerEmail: inviterUser?.email || prev.partnerEmail || partnership.partnerEmail
-      }));
-      setSubscription({
-        userId: currentUser.id,
-        plano: 'duo',
-        status: 'active'
-      });
-      showToast('Convite aceito! Parceria Ativa iniciada com sucesso! 💜', 'success');
-      return true;
-    } else {
-      showToast('Código de convite inválido', 'error');
+  const acceptInvite = async (token: string): Promise<boolean> => {
+    // Formato conferido antes de ir à rede, só para dar erro imediato: a
+    // validação que vale é a do servidor.
+    const limpo = token.trim();
+    const ehUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(limpo);
+    if (!ehUuid) {
+      showToast('Código de convite inválido.', 'error');
       return false;
     }
-  };
 
-  const endPartnership = () => {
-    setPartnership({
-      id: `part-${Date.now()}`,
-      user1Id: currentUser.id,
-      status: 'none',
-      inviteToken: ''
-    });
-    showToast('Parceria encerrada com sucesso.', 'info');
-  };
-
-  const setSubscriptionPlan = (plano: 'free' | 'duo') => {
-    setSubscription({
-      userId: currentUser.id,
-      plano,
-      status: 'active'
-    });
-    if (plano === 'free') {
-      setPartnership(prev => ({ ...prev, status: 'none' }));
+    const { error } = await supabase.rpc('aceitar_convite_household', { p_token: limpo });
+    if (error) {
+      const mensagens: Record<string, string> = {
+        convite_invalido: 'Convite inválido, já usado ou expirado.',
+        convite_proprio: 'Você não pode aceitar o próprio convite.',
+        convite_de_outro_email: 'Este convite foi emitido para outro e-mail.',
+        parceria_ja_ativa: 'Essa parceria já tem duas pessoas.',
+        ja_tem_parceria: 'Você já tem uma parceria ativa.'
+      };
+      showToast(mensagens[error.message] ?? 'Não foi possível aceitar o convite.', 'error');
+      return false;
     }
-    showToast(`Plano alterado para ${plano.toUpperCase()}!`, 'info');
+
+    // A associação mudou: recarregar traz os dados do casal e a nova composição
+    // do household. A recarga vem ANTES do aviso de sucesso: anunciar primeiro
+    // deixaria a tela exibindo o household antigo enquanto toda escrita falha.
+    const recarregou = await recarregarPerfil();
+    if (!recarregou) {
+      showToast('Parceria criada, mas a tela não atualizou. Recarregue a página.', 'error');
+      return true;
+    }
+    showToast('Parceria iniciada! 💜', 'success');
+    return true;
   };
 
-  const resetToDefaultData = () => {
-    setExpenses(mockExpenses);
-    setIncomes(mockIncomes);
-    setMonthlyGoals(mockMonthlyGoals);
-    setFinancialGoals(mockFinancialGoals);
-    setDebts(mockDebts);
-    setBudgets(mockBudgets);
-    setPartnership(mockPartnership);
-    setSubscription(mockSubscription);
-    setIncomeRecurrenceConfigs(mockIncomeRecurrenceConfigs);
-    showToast('Dados restaurados para os dados padrão de demonstração!', 'info');
+  const endPartnership = async (): Promise<boolean> => {
+    const { error } = await supabase.rpc('sair_da_parceria');
+    if (error) {
+      showToast('Não foi possível encerrar a parceria.', 'error');
+      return false;
+    }
+    const recarregou = await recarregarPerfil();
+    if (!recarregou) {
+      showToast('Parceria encerrada, mas a tela não atualizou. Recarregue a página.', 'error');
+      return true;
+    }
+    showToast('Parceria encerrada. Os lançamentos ficaram com a conta que permaneceu.', 'info');
+    return true;
+  };
+
+  /**
+   * O plano deixou de ser editável pelo cliente: a policy de escrita em
+   * subscriptions foi removida justamente porque qualquer pessoa se dava o
+   * plano duo com um PATCH. Trocar de plano passa a depender de cobrança, que
+   * é o item 6 do roteiro e ainda não existe. A função fica, para não quebrar
+   * as telas, mas diz a verdade em vez de fingir que mudou algo.
+   */
+  const setSubscriptionPlan = (_plano: 'free' | 'duo') => {
+    showToast('A troca de plano ainda não está disponível.', 'info');
   };
 
   return (
     <AppContext.Provider
       value={{
         isAuthenticated,
+        authLoading,
+        carregandoDados,
         authScreen,
         setAuthScreen,
         login,
         register,
         signup,
         logout,
+        recuperarSenha,
+        atualizarPerfil,
+        enviarFotoPerfil,
+        trocarSenha,
+        trocarEmail,
         currentUser,
         partner,
-        users,
-        setCurrentUserId,
+        users: todosUsuarios,
         activeTab,
         setActiveTab,
         theme,
@@ -884,7 +1279,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setSubscriptionPlan,
         toasts,
         showToast,
-        resetToDefaultData
       }}
     >
       {children}
