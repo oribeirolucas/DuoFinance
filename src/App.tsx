@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
@@ -6,25 +6,37 @@ import { AuthView } from './components/Auth/AuthView';
 import { ToastContainer } from './components/ToastContainer';
 import { Debt } from './types';
 
-// Views
-import { DashboardView } from './components/Views/DashboardView';
-import { ComparisonView } from './components/Views/ComparisonView';
-import { ExpensesView } from './components/Views/ExpensesView';
-import { IncomesView } from './components/Views/IncomesView';
-import { BudgetView } from './components/Views/BudgetView';
-import { DebtsView } from './components/Views/DebtsView';
-import { GoalsView } from './components/Views/GoalsView';
-import { FinancialGoalsView } from './components/Views/FinancialGoalsView';
-import { SpreadsheetView } from './components/Views/SpreadsheetView';
-import { PartnerView } from './components/Views/PartnerView';
-import { SettingsView } from './components/Views/SettingsView';
+// Views e modais entram sob demanda.
+//
+// Antes, abrir o app baixava as onze telas e os cinco modais de uma vez,
+// inclusive o Recharts inteiro que só o Dashboard e o Comparativo usam. Quem
+// entrava para ver o saldo pagava pelo que não ia abrir. Cada lazy() vira um
+// arquivo próprio no build, buscado no primeiro uso e cacheado depois.
+const DashboardView      = lazy(() => import('./components/Views/DashboardView').then(m => ({ default: m.DashboardView })));
+const ComparisonView     = lazy(() => import('./components/Views/ComparisonView').then(m => ({ default: m.ComparisonView })));
+const ExpensesView       = lazy(() => import('./components/Views/ExpensesView').then(m => ({ default: m.ExpensesView })));
+const IncomesView        = lazy(() => import('./components/Views/IncomesView').then(m => ({ default: m.IncomesView })));
+const BudgetView         = lazy(() => import('./components/Views/BudgetView').then(m => ({ default: m.BudgetView })));
+const DebtsView          = lazy(() => import('./components/Views/DebtsView').then(m => ({ default: m.DebtsView })));
+const GoalsView          = lazy(() => import('./components/Views/GoalsView').then(m => ({ default: m.GoalsView })));
+const FinancialGoalsView = lazy(() => import('./components/Views/FinancialGoalsView').then(m => ({ default: m.FinancialGoalsView })));
+const SpreadsheetView    = lazy(() => import('./components/Views/SpreadsheetView').then(m => ({ default: m.SpreadsheetView })));
+const PartnerView        = lazy(() => import('./components/Views/PartnerView').then(m => ({ default: m.PartnerView })));
+const SettingsView       = lazy(() => import('./components/Views/SettingsView').then(m => ({ default: m.SettingsView })));
 
-// Modals
-import { ExpenseModal } from './components/Modals/ExpenseModal';
-import { IncomeModal } from './components/Modals/IncomeModal';
-import { IncomeRecurrenceModal } from './components/Modals/IncomeRecurrenceModal';
-import { PartnerInviteModal } from './components/Modals/PartnerInviteModal';
-import { DebtModal } from './components/Modals/DebtModal';
+const ExpenseModal           = lazy(() => import('./components/Modals/ExpenseModal').then(m => ({ default: m.ExpenseModal })));
+const IncomeModal            = lazy(() => import('./components/Modals/IncomeModal').then(m => ({ default: m.IncomeModal })));
+const IncomeRecurrenceModal  = lazy(() => import('./components/Modals/IncomeRecurrenceModal').then(m => ({ default: m.IncomeRecurrenceModal })));
+const PartnerInviteModal     = lazy(() => import('./components/Modals/PartnerInviteModal').then(m => ({ default: m.PartnerInviteModal })));
+const DebtModal              = lazy(() => import('./components/Modals/DebtModal').then(m => ({ default: m.DebtModal })));
+
+/** Placeholder enquanto o arquivo da tela é buscado. Some em milissegundos
+ *  na segunda visita, porque o navegador já tem o pedaço em cache. */
+const CarregandoTela: React.FC = () => (
+  <div className="flex items-center justify-center py-24">
+    <div className="w-7 h-7 rounded-full border-2 border-purple-200 border-t-purple-600 animate-spin" />
+  </div>
+);
 
 const MainLayout: React.FC = () => {
   const { isAuthenticated, authLoading, carregandoDados, activeTab } = useApp();
@@ -138,36 +150,31 @@ const MainLayout: React.FC = () => {
         />
 
         <main className="flex-1 px-4 lg:px-8 py-6 max-w-7xl mx-auto w-full">
-          {renderActiveTab()}
+          <Suspense fallback={<CarregandoTela />}>
+            {renderActiveTab()}
+          </Suspense>
         </main>
       </div>
 
-      {/* Action Modals */}
-      <ExpenseModal
-        isOpen={expenseModalOpen}
-        onClose={() => setExpenseModalOpen(false)}
-      />
-
-      <IncomeModal
-        isOpen={incomeModalOpen}
-        onClose={() => setIncomeModalOpen(false)}
-      />
-
-      <IncomeRecurrenceModal
-        isOpen={incomeRecurrenceModalOpen}
-        onClose={() => setIncomeRecurrenceModalOpen(false)}
-      />
-
-      <PartnerInviteModal
-        isOpen={inviteModalOpen}
-        onClose={() => setInviteModalOpen(false)}
-      />
-
-      <DebtModal
-        isOpen={debtModalOpen}
-        onClose={() => setDebtModalOpen(false)}
-        initialDebt={debtToEdit}
-      />
+      {/* Modais. A montagem condicional é o que faz o code-splitting valer:
+          montado sempre, o lazy baixaria o arquivo mesmo com o modal fechado. */}
+      <Suspense fallback={null}>
+        {expenseModalOpen && (
+          <ExpenseModal isOpen onClose={() => setExpenseModalOpen(false)} />
+        )}
+        {incomeModalOpen && (
+          <IncomeModal isOpen onClose={() => setIncomeModalOpen(false)} />
+        )}
+        {incomeRecurrenceModalOpen && (
+          <IncomeRecurrenceModal isOpen onClose={() => setIncomeRecurrenceModalOpen(false)} />
+        )}
+        {inviteModalOpen && (
+          <PartnerInviteModal isOpen onClose={() => setInviteModalOpen(false)} />
+        )}
+        {debtModalOpen && (
+          <DebtModal isOpen onClose={() => setDebtModalOpen(false)} initialDebt={debtToEdit} />
+        )}
+      </Suspense>
     </div>
   );
 };
