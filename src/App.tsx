@@ -5,14 +5,14 @@ import { Sidebar } from './components/Sidebar';
 import { AuthView } from './components/Auth/AuthView';
 import { ToastContainer } from './components/ToastContainer';
 import { Debt } from './types';
+// Estático de propósito: o app sempre abre no Dashboard, então adiá-lo não
+// pouparia download nenhum no primeiro acesso e só acrescentaria uma ida e
+// volta antes do primeiro desenho. O ganho do code-splitting vem das outras
+// dez telas e dos cinco modais, que a maioria das visitas não abre.
+import { DashboardView } from './components/Views/DashboardView';
 
-// Views e modais entram sob demanda.
-//
-// Antes, abrir o app baixava as onze telas e os cinco modais de uma vez,
-// inclusive o Recharts inteiro que só o Dashboard e o Comparativo usam. Quem
-// entrava para ver o saldo pagava pelo que não ia abrir. Cada lazy() vira um
-// arquivo próprio no build, buscado no primeiro uso e cacheado depois.
-const DashboardView      = lazy(() => import('./components/Views/DashboardView').then(m => ({ default: m.DashboardView })));
+// As demais telas e os modais entram sob demanda: cada lazy() vira um arquivo
+// próprio no build, buscado no primeiro uso e cacheado depois.
 const ComparisonView     = lazy(() => import('./components/Views/ComparisonView').then(m => ({ default: m.ComparisonView })));
 const ExpensesView       = lazy(() => import('./components/Views/ExpensesView').then(m => ({ default: m.ExpensesView })));
 const IncomesView        = lazy(() => import('./components/Views/IncomesView').then(m => ({ default: m.IncomesView })));
@@ -29,6 +29,45 @@ const IncomeModal            = lazy(() => import('./components/Modals/IncomeModa
 const IncomeRecurrenceModal  = lazy(() => import('./components/Modals/IncomeRecurrenceModal').then(m => ({ default: m.IncomeRecurrenceModal })));
 const PartnerInviteModal     = lazy(() => import('./components/Modals/PartnerInviteModal').then(m => ({ default: m.PartnerInviteModal })));
 const DebtModal              = lazy(() => import('./components/Modals/DebtModal').then(m => ({ default: m.DebtModal })));
+
+/**
+ * Fronteira de erro para o carregamento sob demanda.
+ *
+ * Um import() rejeitado — hash de arquivo invalidado por um deploy novo
+ * enquanto a aba estava aberta, ou queda de rede — subia até a raiz e deixava
+ * a tela em branco. Antes do code-splitting isso não podia acontecer: tudo já
+ * estava carregado desde o início.
+ */
+class FronteiraDeCarregamento extends React.Component<
+  { children: React.ReactNode },
+  { falhou: boolean }
+> {
+  state = { falhou: false };
+
+  static getDerivedStateFromError() {
+    return { falhou: true };
+  }
+
+  render() {
+    if (!this.state.falhou) return this.props.children;
+    return (
+      <div className="flex flex-col items-center justify-center py-24 gap-3 text-center">
+        <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+          Não foi possível carregar esta tela.
+        </p>
+        <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs">
+          Pode ter saído uma versão nova enquanto esta aba estava aberta.
+        </p>
+        <button
+          onClick={() => window.location.reload()}
+          className="px-4 py-2 rounded-xl bg-gradient-duo text-white font-bold text-xs"
+        >
+          Recarregar
+        </button>
+      </div>
+    );
+  }
+}
 
 /** Placeholder enquanto o arquivo da tela é buscado. Some em milissegundos
  *  na segunda visita, porque o navegador já tem o pedaço em cache. */
@@ -150,15 +189,17 @@ const MainLayout: React.FC = () => {
         />
 
         <main className="flex-1 px-4 lg:px-8 py-6 max-w-7xl mx-auto w-full">
-          <Suspense fallback={<CarregandoTela />}>
-            {renderActiveTab()}
-          </Suspense>
+          <FronteiraDeCarregamento>
+            <Suspense fallback={<CarregandoTela />}>
+              {renderActiveTab()}
+            </Suspense>
+          </FronteiraDeCarregamento>
         </main>
       </div>
 
       {/* Modais. A montagem condicional é o que faz o code-splitting valer:
           montado sempre, o lazy baixaria o arquivo mesmo com o modal fechado. */}
-      <Suspense fallback={null}>
+      <Suspense fallback={<CarregandoTela />}>
         {expenseModalOpen && (
           <ExpenseModal isOpen onClose={() => setExpenseModalOpen(false)} />
         )}
