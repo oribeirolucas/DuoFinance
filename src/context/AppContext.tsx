@@ -51,6 +51,10 @@ interface AppContextType {
   enviarFotoPerfil: (arquivo: File) => Promise<string | null>;
   trocarSenha: (senhaAtual: string, novaSenha: string) => Promise<boolean>;
   trocarEmail: (novoEmail: string) => Promise<boolean>;
+  /** LGPD art. 18, II e V: baixa um JSON com tudo que esta conta enxerga. */
+  exportarMeusDados: () => Promise<boolean>;
+  /** LGPD art. 18, VI. Confere a senha no servidor; irreversivel. */
+  excluirMinhaConta: (senha: string) => Promise<boolean>;
 
   // Users & Active Partner Context
   currentUser: User;
@@ -504,6 +508,100 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
     // O e-mail só muda de fato depois da confirmação no endereço novo.
     showToast('Confirme a troca pelo link enviado ao novo e-mail.', 'info');
+    return true;
+  };
+
+  // ------------------------------------------- direitos do titular (LGPD)
+
+  /**
+   * Art. 18, II e V: acesso aos dados e portabilidade.
+   *
+   * Lê pelas mesmas policies de RLS que o app já usa, sem função privilegiada:
+   * o que sai aqui é exatamente o que esta conta enxerga na tela, nem mais.
+   * Num app de casal isso inclui o que é do casal — o parceiro aparece porque
+   * a tela dele já aparece, e a política de privacidade diz isso.
+   *
+   * JSON, não CSV: portabilidade pede formato que outro sistema consiga ler,
+   * e uma planilha achataria as relações entre as tabelas.
+   */
+  const exportarMeusDados = async (): Promise<boolean> => {
+    if (!session?.user) return false;
+    try {
+      const tabelas = [
+        'profiles', 'households', 'household_members', 'expenses', 'incomes',
+        'income_recurrence_configs', 'monthly_goals', 'financial_goals',
+        'debts', 'category_budgets', 'subscriptions', 'household_invites',
+      ] as const;
+
+      const partes = await Promise.all(
+        tabelas.map(async (t) => {
+          const { data, error } = await supabase.from(t).select('*');
+          return [t, error ? { erro: error.message } : (data ?? [])] as const;
+        })
+      );
+
+      const pacote = {
+        gerado_em: new Date().toISOString(),
+        titular: {
+          id: session.user.id,
+          email: session.user.email,
+          conta_criada_em: session.user.created_at,
+        },
+        observacao:
+          'Exportação feita sob a LGPD, art. 18. Inclui os dados compartilhados '
+          + 'do household, que são visíveis a ambos os membros da parceria.',
+        dados: Object.fromEntries(partes),
+      };
+
+      const url = URL.createObjectURL(
+        new Blob([JSON.stringify(pacote, null, 2)], { type: 'application/json' })
+      );
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `duo-finance-meus-dados-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      showToast('Download dos seus dados iniciado.', 'success');
+      return true;
+    } catch {
+      showToast('Não foi possível gerar a exportação. Tente novamente.', 'error');
+      return false;
+    }
+  };
+
+  /**
+   * Art. 18, VI: eliminação dos dados.
+   *
+   * A senha é conferida no servidor, dentro da função — não aqui. Checar só no
+   * cliente deixaria a exclusão a um POST de distância para quem tivesse o JWT.
+   *
+   * A foto sai antes, pela Storage API: o Supabase recusa `delete` em
+   * storage.objects mesmo numa função definer, e essa ordem troca "sobrou um
+   * retrato num bucket público" por "a pessoa reenvia a foto".
+   */
+  const excluirMinhaConta = async (senha: string): Promise<boolean> => {
+    const uid = session?.user.id;
+    if (!uid) return false;
+
+    const { data: arquivos } = await supabase.storage.from('avatares').list(uid);
+    if (arquivos?.length) {
+      await supabase.storage.from('avatares').remove(arquivos.map(f => `${uid}/${f.name}`));
+    }
+
+    const { error } = await supabase.rpc('excluir_minha_conta', { p_senha: senha });
+    if (error) {
+      showToast(
+        error.message === 'senha_incorreta'
+          ? 'Senha incorreta.'
+          : 'Não foi possível excluir a conta. Tente novamente.',
+        'error'
+      );
+      return false;
+    }
+
+    // A conta não existe mais; a sessão em memória precisa ir junto.
+    await supabase.auth.signOut();
     return true;
   };
 
@@ -1228,6 +1326,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         enviarFotoPerfil,
         trocarSenha,
         trocarEmail,
+        exportarMeusDados,
+        excluirMinhaConta,
         currentUser,
         partner,
         users: todosUsuarios,
