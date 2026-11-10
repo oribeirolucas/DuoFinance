@@ -1,8 +1,8 @@
 # Duo Finance
 
-> Gestão financeira para casais — **dois sonhos, um só planejamento.**
+> Gestão financeira para casais - **dois sonhos, um só planejamento.**
 
-Duo Finance é uma aplicação web para casais organizarem a vida financeira em conjunto: acompanhar saldos, planejar metas e visualizar para onde o dinheiro está indo, com apoio de IA (Google Gemini).
+Duo Finance é uma aplicação web para casais organizarem a vida financeira em conjunto: acompanhar saldos, planejar metas e visualizar para onde o dinheiro está indo, com apoio de IA.
 
 ---
 
