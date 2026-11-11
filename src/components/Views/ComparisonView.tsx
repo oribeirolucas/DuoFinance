@@ -25,10 +25,9 @@ import {
 } from 'recharts';
 
 export const ComparisonView: React.FC = () => {
-  const { expenses: rawExpenses, incomes: rawIncomes, users, currentUser, partner, getHouseholdUserIds } = useApp();
-  const householdIds = getHouseholdUserIds();
-  const expenses = rawExpenses.filter(e => householdIds.includes(e.registradoPor));
-  const incomes = rawIncomes.filter(i => householdIds.includes(i.registradoPor));
+  const { expenses: rawExpenses, incomes: rawIncomes, users, currentUser, partner } = useApp();
+  const expenses = rawExpenses;
+  const incomes = rawIncomes;
   const [timeframe, setTimeframe] = useState<'3m' | '6m' | '1y'>('6m');
 
   const user1Name = currentUser?.nome ? currentUser.nome.split(' ')[0] : 'Usuário 1';

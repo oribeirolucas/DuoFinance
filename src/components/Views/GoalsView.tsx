@@ -19,11 +19,9 @@ export const GoalsView: React.FC = () => {
     addMonthlyGoal,
     updateMonthlyGoal,
     addGoalContribution,
-    getHouseholdUserIds
   } = useApp();
 
-  const householdIds = getHouseholdUserIds();
-  const monthlyGoals = rawMonthlyGoals.filter(g => !g.donoId || householdIds.includes(g.donoId));
+  const monthlyGoals = rawMonthlyGoals;
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingGoal, setEditingGoal] = useState<MonthlyGoal | null>(null);

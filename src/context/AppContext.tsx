@@ -60,7 +60,6 @@ interface AppContextType {
   currentUser: User;
   partner: User | null;
   users: User[];
-  getHouseholdUserIds: () => string[];
 
   // Active View Tab
   activeTab: NavigationTab;
@@ -136,7 +135,7 @@ const LOCAL_STORAGE_KEY = 'duo_finance_v1_data';
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   // A sessão é a fonte da verdade da autenticação. Ela vem do Supabase, que
-  // valida o JWT no servidor — o localStorage deixa de decidir quem está
+  // valida o JWT no servidor - o localStorage deixa de decidir quem está
   // logado, e o campo `_is_authenticated` some junto.
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -196,7 +195,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // Os dados vivem no Postgres. Estes estados são apenas a cópia local que a
   // interface renderiza; a hidratação acontece no efeito logo abaixo, depois
   // que existe sessão, e cada escrita vai ao banco. Antes disto o localStorage
-  // era a base de dados — o que o parecer resume como "o cliente nunca é fonte
+  // era a base de dados - o que o parecer resume como "o cliente nunca é fonte
   // de verdade".
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [incomes, setIncomes] = useState<Income[]>([]);
@@ -271,7 +270,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // Perfis do household, vindos do Postgres. O RLS garante que esta consulta
-  // só devolve quem divide o household — não há como pedir "todos os usuários".
+  // só devolve quem divide o household - não há como pedir "todos os usuários".
   const [perfis, setPerfis] = useState<User[]>([]);
 
   /**
@@ -483,7 +482,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     // O Supabase troca a senha sem pedir a atual. Exigi-la aqui é o que impede
     // que uma sessão esquecida aberta num computador alheio vire uma troca de
-    // senha — e, com ela, a perda da conta.
+    // senha - e, com ela, a perda da conta.
     const { error: erroAuth } = await supabase.auth.signInWithPassword({ email, password: senhaAtual });
     if (erroAuth) {
       showToast('Senha atual incorreta.', 'error');
@@ -518,7 +517,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
    *
    * Lê pelas mesmas policies de RLS que o app já usa, sem função privilegiada:
    * o que sai aqui é exatamente o que esta conta enxerga na tela, nem mais.
-   * Num app de casal isso inclui o que é do casal — o parceiro aparece porque
+   * Num app de casal isso inclui o que é do casal - o parceiro aparece porque
    * a tela dele já aparece, e a política de privacidade diz isso.
    *
    * JSON, não CSV: portabilidade pede formato que outro sistema consiga ler,
@@ -536,9 +535,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const partes = await Promise.all(
         tabelas.map(async (t) => {
           const { data, error } = await supabase.from(t).select('*');
-          return [t, error ? { erro: error.message } : (data ?? [])] as const;
+          return { tabela: t, linhas: data ?? [], erro: error?.message };
         })
       );
+
+      // Entregar o arquivo com uma tabela faltando, dizendo que deu certo,
+      // é pior do que não entregar: a pessoa arquiva como se fosse a cópia
+      // completa dos dados dela. Num recurso que existe para cumprir o
+      // art. 18, parcial anunciado como inteiro não cumpre o artigo.
+      const falhas = partes.filter(p => p.erro);
+      if (falhas.length) {
+        showToast(
+          `Faltaram dados de: ${falhas.map(f => f.tabela).join(', ')}. Nada foi baixado.`,
+          'error'
+        );
+        return false;
+      }
 
       const pacote = {
         gerado_em: new Date().toISOString(),
@@ -550,17 +562,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         observacao:
           'Exportação feita sob a LGPD, art. 18. Inclui os dados compartilhados '
           + 'do household, que são visíveis a ambos os membros da parceria.',
-        dados: Object.fromEntries(partes),
+        dados: Object.fromEntries(partes.map(p => [p.tabela, p.linhas])),
       };
 
+      // Mesmo padrão do download da planilha: a âncora entra no DOM, é
+      // clicada e sai. Fora do documento, o Safari ignora o clique; e revogar
+      // a URL no mesmo tick cancela o download antes de ele começar.
       const url = URL.createObjectURL(
         new Blob([JSON.stringify(pacote, null, 2)], { type: 'application/json' })
       );
       const a = document.createElement('a');
       a.href = url;
       a.download = `duo-finance-meus-dados-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
 
       showToast('Download dos seus dados iniciado.', 'success');
       return true;
@@ -573,20 +590,53 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   /**
    * Art. 18, VI: eliminação dos dados.
    *
-   * A senha é conferida no servidor, dentro da função — não aqui. Checar só no
-   * cliente deixaria a exclusão a um POST de distância para quem tivesse o JWT.
+   * A ordem dos três passos abaixo não é arbitrária; cada troca tem um custo
+   * em dado perdido, e esta é a combinação que perde menos.
    *
-   * A foto sai antes, pela Storage API: o Supabase recusa `delete` em
-   * storage.objects mesmo numa função definer, e essa ordem troca "sobrou um
-   * retrato num bucket público" por "a pessoa reenvia a foto".
+   * 1. Confere a senha pelo endpoint de autenticação, igual a trocarSenha.
+   *    Fosse a RPC a primeira a saber da senha errada, a foto já teria sido
+   *    apagada por uma tentativa que nem devia ter começado - e errar a senha
+   *    é, de longe, a falha mais provável aqui. De quebra, este endpoint tem
+   *    limite de tentativas e não leva a senha para dentro de um log de SQL.
+   *
+   * 2. Apaga a foto, conferindo o retorno. O Supabase recusa `delete` em
+   *    storage.objects mesmo numa função definer, então isto não cabe na RPC.
+   *    Se falhar, a exclusão para aqui: depois que a conta some, nenhuma
+   *    policy alcança mais aquele arquivo, porque todas comparam a pasta com
+   *    `auth.uid()` - e o retrato ficaria num bucket público para sempre.
+   *
+   * 3. Só então a RPC, que confere a senha de novo. A checagem do passo 1 é
+   *    conveniência de interface; a que vale é a do servidor, porque um JWT
+   *    roubado não passa por tela nenhuma.
    */
   const excluirMinhaConta = async (senha: string): Promise<boolean> => {
     const uid = session?.user.id;
-    if (!uid) return false;
+    const email = session?.user.email;
+    if (!uid || !email) return false;
 
-    const { data: arquivos } = await supabase.storage.from('avatares').list(uid);
+    const { error: erroSenha } = await supabase.auth.signInWithPassword({ email, password: senha });
+    if (erroSenha) {
+      showToast('Senha incorreta.', 'error');
+      return false;
+    }
+
+    const { data: arquivos, error: erroLista } = await supabase.storage
+      .from('avatares')
+      .list(uid, { limit: 1000 });
+
+    if (erroLista) {
+      showToast('Não foi possível remover sua foto agora. Nada foi excluído.', 'error');
+      return false;
+    }
+
     if (arquivos?.length) {
-      await supabase.storage.from('avatares').remove(arquivos.map(f => `${uid}/${f.name}`));
+      const { error: erroRemocao } = await supabase.storage
+        .from('avatares')
+        .remove(arquivos.map(f => `${uid}/${f.name}`));
+      if (erroRemocao) {
+        showToast('Não foi possível remover sua foto agora. Nada foi excluído.', 'error');
+        return false;
+      }
     }
 
     const { error } = await supabase.rpc('excluir_minha_conta', { p_senha: senha });
@@ -600,8 +650,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return false;
     }
 
-    // A conta não existe mais; a sessão em memória precisa ir junto.
-    await supabase.auth.signOut();
+    // A conta não existe mais; a sessão em memória precisa ir junto. Se o
+    // signOut falhar por rede, o JWT continua válido por ser stateless, e o
+    // app mostraria um painel vazio de um usuário inexistente em vez da tela
+    // de login. Limpar o estado local à força evita esse zumbi.
+    const { error: erroSaida } = await supabase.auth.signOut();
+    if (erroSaida) setSession(null);
     return true;
   };
 
@@ -625,51 +679,26 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   /**
-   * Continua existindo como conveniência para as telas, mas deixou de ser
-   * fronteira de segurança: o que chega aqui já veio filtrado pelo RLS, que
-   * não entrega linha de outro household por mais que o cliente peça. Filtrar
-   * de novo no front é só para agrupar por pessoa dentro do casal.
+   * Nada é refiltrado por autor aqui.
+   *
+   * Havia seis filtros neste ponto, herdados da era localStorage, quando o
+   * navegador guardava os dados de todo mundo junto e separar por autor era a
+   * única fronteira existente. Com RLS no banco a separação passou a ser do
+   * servidor: o que chega nestas listas já é só do household.
+   *
+   * Mantê-los custou caro. Eles derrubavam qualquer linha cujo autor não
+   * estivesse na dupla atual - e é exatamente o que acontece depois que alguém
+   * desfaz a parceria ou exclui a conta. Quem ficava perdia de vista tudo que o
+   * outro havia registrado, com os totais, o gasto por categoria e o
+   * comparativo mudando sozinhos, enquanto as linhas seguiam intactas no banco.
+   *
+   * Agrupar por pessoa continua existindo onde faz sentido: é o seletor "quem
+   * pagou" das telas, que filtra a pedido do usuário, não pelas costas dele.
    */
-  const getHouseholdUserIds = (): string[] => {
-    if (!currentUser || !currentUser.id) return [];
-    return partner && partner.id ? [currentUser.id, partner.id] : [currentUser.id];
-  };
-
-  const householdUserIds = getHouseholdUserIds();
-
-  const filteredExpenses = expenses.filter(e => {
-    const id = e.registradoPor || currentUser?.id || '';
-    return householdUserIds.includes(id);
-  });
-
-  const filteredIncomes = incomes.filter(i => {
-    const id = i.registradoPor || currentUser?.id || '';
-    return householdUserIds.includes(id);
-  });
-
-  const filteredMonthlyGoals = monthlyGoals.filter(m => {
-    const id = m.donoId || currentUser?.id || '';
-    return householdUserIds.includes(id);
-  });
-
-  const filteredFinancialGoals = financialGoals.filter(f => {
-    const id = f.donoId || currentUser?.id || '';
-    return householdUserIds.includes(id);
-  });
-
-  const filteredDebts = debts.filter(d => {
-    const id = d.registradoPor || currentUser?.id || '';
-    return householdUserIds.includes(id);
-  });
-
-  const filteredBudgets = budgets.filter(b => {
-    const id = b.donoId || currentUser?.id || '';
-    return householdUserIds.includes(id);
-  });
 
   // A verificação de senha acontece no servidor, contra o hash bcrypt guardado
   // em auth.users. O cliente nunca vê hash nenhum, e mensagem de erro não
-  // distingue "e-mail não existe" de "senha errada" — isso evita confirmar
+  // distingue "e-mail não existe" de "senha errada" - isso evita confirmar
   // para um estranho quais e-mails têm conta.
   const login = async (email: string, password: string): Promise<boolean> => {
     if (!supabaseConfigurado) {
@@ -692,7 +721,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // E-mail já cadastrado passa a ser erro do servidor. Antes, o cadastro
-  // sobrescrevia o usuário existente e iniciava a sessão como ele — tomada de
+  // sobrescrevia o usuário existente e iniciava a sessão como ele - tomada de
   // conta sem sequer pedir a senha.
   const signup = async (
     nome: string,
@@ -739,7 +768,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     // "funciona" mas devolve identities vazio. O retorno e a mensagem precisam
     // ser idênticos aos do cadastro legítimo sem sessão: se um caminho
     // mostrasse erro e o outro não, bastaria tentar cadastrar um e-mail para
-    // descobrir se ele tem conta — a enumeração que isto deveria impedir.
+    // descobrir se ele tem conta - a enumeração que isto deveria impedir.
     const jaExistia = data.user?.identities?.length === 0;
 
     if (jaExistia || !data.session) {
@@ -772,7 +801,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     // O Supabase responde com sucesso mesmo para e-mail sem conta, então um
-    // erro aqui é falha real de envio (rede, limite de taxa) — vale informar,
+    // erro aqui é falha real de envio (rede, limite de taxa) - vale informar,
     // sem revelar nada sobre a existência da conta.
     const { error } = await supabase.auth.resetPasswordForEmail(
       email.trim().toLowerCase(),
@@ -976,7 +1005,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     });
 
     // Apaga e regera o ano inteiro em duas chamadas, não ~16 escritas soltas.
-    // A operação é idempotente — rodar de novo converge para o mesmo estado —
+    // A operação é idempotente - rodar de novo converge para o mesmo estado -
     // então, se a segunda etapa falhar, repetir resolve. O guarda abaixo evita
     // o caso ruim: inserir sem ter apagado, que duplicaria o ano.
     setIncomes([...novasReceitas, ...mantidas]);
@@ -997,7 +1026,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           .then(({ error: erroInsert }) => {
             if (erroInsert) {
               // A exclusão já foi confirmada pelo banco. Voltar ao estado
-              // anterior exibiria um ano de receitas que não existem mais —
+              // anterior exibiria um ano de receitas que não existem mais -
               // pior que mostrar o vazio real. A tela passa a refletir o que
               // de fato está gravado, e a mensagem pede a repetição, que é
               // segura: a operação converge para o mesmo resultado.
@@ -1336,18 +1365,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         theme,
         setTheme,
         toggleTheme,
-        expenses: filteredExpenses,
-        incomes: filteredIncomes,
+        expenses,
+        incomes,
         incomeRecurrenceConfigs,
         getIncomeRecurrenceConfig,
         saveIncomeRecurrenceConfig,
         syncRecurrentIncomesForUser,
         updateUserSalario,
-        monthlyGoals: filteredMonthlyGoals,
-        financialGoals: filteredFinancialGoals,
-        debts: filteredDebts,
-        budgets: filteredBudgets,
-        getHouseholdUserIds,
+        monthlyGoals,
+        financialGoals,
+        debts,
+        budgets,
         partnership,
         subscription,
         divisionRule,

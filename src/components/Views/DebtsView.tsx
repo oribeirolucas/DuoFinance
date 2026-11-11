@@ -44,10 +44,9 @@ const deriveDebt = (debt: Debt) => {
 };
 
 export const DebtsView: React.FC<DebtsViewProps> = ({ onOpenDebtModal }) => {
-  const { debts: rawDebts, users, payDebtInstallment, deleteDebt, getHouseholdUserIds } = useApp();
+  const { debts: rawDebts, users, payDebtInstallment, deleteDebt } = useApp();
 
-  const householdIds = getHouseholdUserIds();
-  const debts = rawDebts.filter(d => householdIds.includes(d.registradoPor));
+  const debts = rawDebts;
 
   const totalOriginalDebt = debts.reduce((acc, curr) => acc + curr.valorTotal, 0);
   const totalRemainingDebt = debts.reduce((acc, curr) => acc + deriveDebt(curr).valorRestante, 0);

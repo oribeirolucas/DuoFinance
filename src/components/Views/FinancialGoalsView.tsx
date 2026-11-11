@@ -24,11 +24,9 @@ export const FinancialGoalsView: React.FC = () => {
     deleteFinancialGoal,
     addFinancialGoal,
     updateFinancialGoal,
-    getHouseholdUserIds
   } = useApp();
 
-  const householdIds = getHouseholdUserIds();
-  const financialGoals = rawFinancialGoals.filter(g => !g.donoId || householdIds.includes(g.donoId));
+  const financialGoals = rawFinancialGoals;
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingGoal, setEditingGoal] = useState<FinancialGoal | null>(null);

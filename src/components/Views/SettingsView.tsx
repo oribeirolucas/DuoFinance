@@ -350,7 +350,7 @@ export const SettingsView: React.FC = () => {
 
       <Bloco
         titulo="E-mail de acesso"
-        descricao={`Atualmente ${currentUser.email || '—'}.`}
+        descricao={`Atualmente ${currentUser.email || '-'}.`}
         icone={<Mail className="w-4 h-4" />}
       >
         <form onSubmit={salvarEmail} className="space-y-4">
@@ -382,7 +382,7 @@ export const SettingsView: React.FC = () => {
       >
         <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 leading-relaxed">
           O arquivo traz perfil, lançamentos, metas, orçamento e dívidas. Se você está em
-          uma parceria, inclui também o que é do casal — porque já é visível para você no app.
+          uma parceria, inclui também o que é do casal - porque já é visível para você no app.
         </p>
         <button type="button" onClick={baixarDados} disabled={baixando} className={rotuloBotao}>
           {baixando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
@@ -404,7 +404,7 @@ export const SettingsView: React.FC = () => {
             {temParceiro ? (
               <>
                 Você está em uma parceria. Sua conta, seu perfil e sua foto são apagados,
-                e <strong>os lançamentos do casal ficam com {nomeDoParceiro}</strong> — inclusive
+                e <strong>os lançamentos do casal ficam com {nomeDoParceiro}</strong> - inclusive
                 os que você registrou, que passam a não ter autor. Isso não dá para desfazer.
               </>
             ) : (
