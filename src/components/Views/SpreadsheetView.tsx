@@ -15,10 +15,9 @@ import {
 } from 'lucide-react';
 
 export const SpreadsheetView: React.FC = () => {
-  const { expenses: rawExpenses, incomes: rawIncomes, users, currentUser, partner, getHouseholdUserIds } = useApp();
-  const householdIds = getHouseholdUserIds();
-  const expenses = rawExpenses.filter(e => householdIds.includes(e.registradoPor));
-  const incomes = rawIncomes.filter(i => householdIds.includes(i.registradoPor));
+  const { expenses: rawExpenses, incomes: rawIncomes, users, currentUser, partner } = useApp();
+  const expenses = rawExpenses;
+  const incomes = rawIncomes;
   const pairUsers = [currentUser, partner].filter((u): u is NonNullable<typeof u> => Boolean(u));
 
   const [searchTerm, setSearchTerm] = useState('');

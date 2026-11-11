@@ -13,11 +13,10 @@ import {
 } from 'lucide-react';
 
 export const BudgetView: React.FC = () => {
-  const { budgets: rawBudgets, expenses: rawExpenses, updateBudget, getHouseholdUserIds } = useApp();
+  const { budgets: rawBudgets, expenses: rawExpenses, updateBudget } = useApp();
 
-  const householdIds = getHouseholdUserIds();
-  const budgets = rawBudgets.filter(b => !b.donoId || householdIds.includes(b.donoId));
-  const expenses = rawExpenses.filter(e => householdIds.includes(e.registradoPor));
+  const budgets = rawBudgets;
+  const expenses = rawExpenses;
 
   const [editingCategory, setEditingCategory] = useState<ExpenseCategory | null>(null);
   const [editLimitValue, setEditLimitValue] = useState<string>('');

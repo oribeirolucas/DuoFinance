@@ -50,12 +50,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     setDivisionRule,
     toggleExpensePaid,
     setActiveTab,
-    getHouseholdUserIds
   } = useApp();
 
-  const householdIds = getHouseholdUserIds();
-  const expenses = rawExpenses.filter(item => householdIds.includes(item.registradoPor));
-  const incomes = rawIncomes.filter(item => householdIds.includes(item.registradoPor));
+  const expenses = rawExpenses;
+  const incomes = rawIncomes;
 
   // Calculate total incomes
   const totalIncomes = incomes.reduce((acc, curr) => acc + curr.valor, 0);

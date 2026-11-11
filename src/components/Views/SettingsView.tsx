@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { formatCurrency } from '../../utils/formatters';
-import { User as UserIcon, Camera, Lock, Mail, Check, AlertCircle, Loader2 } from 'lucide-react';
+import { User as UserIcon, Camera, Lock, Mail, Check, AlertCircle, Loader2, Download, Trash2 } from 'lucide-react';
 
 /** Mensagem presa a um bloco do formulário, em vez de um toast global. */
 type Aviso = { tipo: 'ok' | 'erro'; texto: string } | null;
@@ -47,7 +47,13 @@ const rotuloCampo = 'block text-xs font-semibold text-slate-700 dark:text-slate-
 const classeCampo = 'campo-form w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500';
 
 export const SettingsView: React.FC = () => {
-  const { currentUser, atualizarPerfil, enviarFotoPerfil, trocarSenha, trocarEmail } = useApp();
+  const {
+    currentUser, atualizarPerfil, enviarFotoPerfil, trocarSenha, trocarEmail,
+    exportarMeusDados, excluirMinhaConta, partner,
+  } = useApp();
+
+  const temParceiro = partner !== null;
+  const nomeDoParceiro = partner?.nome.split(' ')[0] ?? 'seu parceiro(a)';
 
   const [nome, setNome] = useState(currentUser.nome);
   const [salario, setSalario] = useState(String(currentUser.salario));
@@ -67,6 +73,47 @@ export const SettingsView: React.FC = () => {
   const [novoEmail, setNovoEmail] = useState('');
   const [avisoEmail, setAvisoEmail] = useState<Aviso>(null);
   const [trocandoEmail, setTrocandoEmail] = useState(false);
+
+  const [baixando, setBaixando] = useState(false);
+  const [avisoDados, setAvisoDados] = useState<Aviso>(null);
+
+  const [senhaExclusao, setSenhaExclusao] = useState('');
+  const [confirmacao, setConfirmacao] = useState('');
+  const [excluindo, setExcluindo] = useState(false);
+  const [avisoExclusao, setAvisoExclusao] = useState<Aviso>(null);
+
+  const baixarDados = async () => {
+    setAvisoDados(null);
+    setBaixando(true);
+    try {
+      const ok = await exportarMeusDados();
+      setAvisoDados(
+        ok
+          ? { tipo: 'ok', texto: 'Arquivo gerado. Confira os downloads do navegador.' }
+          : { tipo: 'erro', texto: 'Não foi possível gerar o arquivo. Tente novamente.' }
+      );
+    } finally {
+      setBaixando(false);
+    }
+  };
+
+  const excluirConta = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAvisoExclusao(null);
+    setExcluindo(true);
+    try {
+      const ok = await excluirMinhaConta(senhaExclusao);
+      // Em caso de sucesso o signOut já derrubou a sessão e a tela de login
+      // assume sozinha; não há o que avisar nesta tela, que deixa de existir.
+      if (!ok) {
+        setAvisoExclusao({ tipo: 'erro', texto: 'Não foi possível excluir. Confira a senha e tente de novo.' });
+        setExcluindo(false);
+      }
+    } catch {
+      setAvisoExclusao({ tipo: 'erro', texto: 'Não foi possível excluir. Tente novamente.' });
+      setExcluindo(false);
+    }
+  };
 
   // O perfil chega do banco depois da primeira renderização; sem isto os
   // campos ficariam presos no valor de placeholder que existia ao montar.
@@ -303,7 +350,7 @@ export const SettingsView: React.FC = () => {
 
       <Bloco
         titulo="E-mail de acesso"
-        descricao={`Atualmente ${currentUser.email || '—'}.`}
+        descricao={`Atualmente ${currentUser.email || '-'}.`}
         icone={<Mail className="w-4 h-4" />}
       >
         <form onSubmit={salvarEmail} className="space-y-4">
@@ -325,6 +372,88 @@ export const SettingsView: React.FC = () => {
             <span>{trocandoEmail ? 'Enviando...' : 'Alterar e-mail'}</span>
           </button>
           <Mensagem aviso={avisoEmail} />
+        </form>
+      </Bloco>
+
+      <Bloco
+        titulo="Seus dados"
+        descricao="Baixe uma cópia de tudo que esta conta enxerga, em formato legível por outro sistema."
+        icone={<Download className="w-4 h-4" />}
+      >
+        <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 leading-relaxed">
+          O arquivo traz perfil, lançamentos, metas, orçamento e dívidas. Se você está em
+          uma parceria, inclui também o que é do casal - porque já é visível para você no app.
+        </p>
+        <button type="button" onClick={baixarDados} disabled={baixando} className={rotuloBotao}>
+          {baixando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+          <span>{baixando ? 'Reunindo...' : 'Baixar meus dados (JSON)'}</span>
+        </button>
+        <Mensagem aviso={avisoDados} />
+      </Bloco>
+
+      <Bloco
+        titulo="Excluir a conta"
+        descricao="Apaga sua conta e seus dados. Não há como desfazer."
+        icone={<Trash2 className="w-4 h-4" />}
+      >
+        {/* O texto muda conforme haja parceiro, porque o que acontece com os
+            lançamentos também muda. Prometer "apaga tudo" para quem está numa
+            parceria seria mentira: os lançamentos são do casal e ficam. */}
+        <div className="mb-4 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900">
+          <p className="text-xs text-rose-900 dark:text-rose-200 leading-relaxed">
+            {temParceiro ? (
+              <>
+                Você está em uma parceria. Sua conta, seu perfil e sua foto são apagados,
+                e <strong>os lançamentos do casal ficam com {nomeDoParceiro}</strong> - inclusive
+                os que você registrou, que passam a não ter autor. Isso não dá para desfazer.
+              </>
+            ) : (
+              <>
+                Sua conta e <strong>todos os seus lançamentos, metas, dívidas e orçamento
+                são apagados</strong> do banco. Isso não dá para desfazer.
+              </>
+            )}
+          </p>
+        </div>
+
+        <form onSubmit={excluirConta} className="space-y-4">
+          <div>
+            <label htmlFor="cfg-senha-exclusao" className={rotuloCampo}>
+              Confirme com sua senha
+            </label>
+            <input
+              id="cfg-senha-exclusao"
+              type="password"
+              autoComplete="current-password"
+              value={senhaExclusao}
+              onChange={e => setSenhaExclusao(e.target.value)}
+              className={classeCampo}
+            />
+          </div>
+
+          <div>
+            <label htmlFor="cfg-confirma-exclusao" className={rotuloCampo}>
+              Digite <span className="font-mono font-bold">EXCLUIR</span> para liberar o botão
+            </label>
+            <input
+              id="cfg-confirma-exclusao"
+              type="text"
+              autoComplete="off"
+              value={confirmacao}
+              onChange={e => setConfirmacao(e.target.value)}
+              className={classeCampo}
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={excluindo || !senhaExclusao || confirmacao.trim().toUpperCase() !== 'EXCLUIR'}
+            className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-md shadow-rose-500/20 transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            {excluindo && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            <span>{excluindo ? 'Excluindo...' : 'Excluir minha conta'}</span>
+          </button>
+          <Mensagem aviso={avisoExclusao} />
         </form>
       </Bloco>
     </div>

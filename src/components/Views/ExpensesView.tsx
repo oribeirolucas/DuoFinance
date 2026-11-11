@@ -21,8 +21,7 @@ interface ExpensesViewProps {
 }
 
 export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenExpenseModal }) => {
-  const { expenses, users, currentUser, partner, deleteExpense, toggleExpensePaid, getHouseholdUserIds } = useApp();
-  const householdIds = getHouseholdUserIds();
+  const { expenses, users, currentUser, partner, deleteExpense, toggleExpensePaid } = useApp();
   const pairUsers = [currentUser, partner].filter((u): u is NonNullable<typeof u> => Boolean(u));
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -41,7 +40,6 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenExpenseModal }
   ];
 
   const filteredExpenses = expenses
-    .filter(item => householdIds.includes(item.registradoPor))
     .filter(exp => {
     const matchesSearch = exp.descricao.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (exp.observacao && exp.observacao.toLowerCase().includes(searchTerm.toLowerCase()));

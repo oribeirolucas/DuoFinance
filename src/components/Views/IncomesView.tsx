@@ -24,9 +24,8 @@ interface IncomesViewProps {
 }
 
 export const IncomesView: React.FC<IncomesViewProps> = ({ onOpenIncomeModal, onOpenRecurrenceModal }) => {
-  const { incomes: rawIncomes, users, deleteIncome, currentUser, partner, setActiveTab, getHouseholdUserIds } = useApp();
-  const householdIds = getHouseholdUserIds();
-  const incomes = rawIncomes.filter(item => householdIds.includes(item.registradoPor));
+  const { incomes: rawIncomes, users, deleteIncome, currentUser, partner, setActiveTab } = useApp();
+  const incomes = rawIncomes;
 
   const currentFirstName = currentUser.nome ? currentUser.nome.split(' ')[0] : 'Você';
   const partnerFirstName = partner?.nome ? partner.nome.split(' ')[0] : null;
